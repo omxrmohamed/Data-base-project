@@ -7,7 +7,7 @@ create procedure createAllTables
 as 
 begin
 create table Department(
-	name varchar(50) not null , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
+	name varchar(50)  , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
 	building_location varchar(50),
 	check(name in ('MET', 'IET', 'HR department', 'Medical department')),
 	constraint PK_DPT primary key (name)
@@ -218,3 +218,32 @@ GO;
 
 
 Exec createAllTables;
+
+
+
+GO;
+create procedure dropAllTables
+as
+begin
+
+	drop table Department;
+	drop table Employee;
+	drop table Employee_Phone;
+	drop table Role;
+	drop table Employee_Role;
+	drop table Role_existsIn_Department;
+	drop table Leave;
+	drop table Annual_Leave;
+	drop table Accidental_Leave;
+	drop table Medical_Leave;
+	drop table Unpaid_Leave;
+	drop table Compensation_Leave;
+	drop table Document;
+	drop table Payroll;	
+	drop table Attendance;
+	drop table Deduction;
+	drop table Performance;
+	drop table Employee_Replace_Employee;
+	drop table Employee_Approve_Leave;
+end
+GO;
