@@ -1,8 +1,7 @@
 ﻿create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
-go;
 
-
+GO
 create procedure createAllTables
 as 
 begin
@@ -68,6 +67,7 @@ create table Employee_Role (
 create table Role_existsIn_Department (
 	department_name varchar(50), 
 	Role_name varchar(50),
+	constraint PK_ReD primary key (department_name, Role_name),
 	constraint FK_Role_Exist foreign key (role_name) references Role(role_name),
 	constraint FK_role_dept foreign key (department_name) references Department(name)
 );
@@ -89,7 +89,7 @@ create table Annual_Leave (
 	constraint PK_Leave_Annual primary key (request_ID),
 	constraint FK_Leave_Annual foreign key (request_ID) references Leave(request_ID),
 	constraint FK_Employee_Annual foreign key (emp_ID) references Employee(employee_ID),
-	constraint FK_Employee2_Annual foreign key (replacement_emp) references Employee(employee_ID),
+	constraint FK_Employee2_Annual foreign key (replacement_emp) references Employee(employee_ID)
 
 	);
 create table Accidental_Leave (
@@ -192,7 +192,7 @@ create table Performance (
 	rating int, 
 	comments varchar(50), 
 	semester char (3), 
-	emp_ID int
+	emp_ID int,
 	constraint PK_Perform primary key (performance_ID),
 	constraint FK_Employee_perform foreign key (emp_ID) references Employee(employee_ID),
 	check(rating >=1 and rating <= 5)
@@ -214,36 +214,51 @@ create table Employee_Approve_Leave (
 	constraint FK_Employee1_App_leave foreign key (Emp1_ID) references Employee(employee_ID)	
 );
 end
-GO;
+GO
 
-
+GO
 Exec createAllTables;
+GO
 
-
-
-GO;
+GO
 create procedure dropAllTables
 as
 begin
 
-	drop table Department;
-	drop table Employee;
-	drop table Employee_Phone;
-	drop table Role;
+	drop table Employee_Approve_Leave;
+	drop table Employee_Replace_Employee;
+	drop table Performance;
+	drop table Deduction;
+	drop table Attendance;
+	drop table Payroll;
+	drop table Document;
+	drop table Compensation_Leave;
+	drop table Unpaid_Leave;
+	drop table Medical_Leave;
+	drop table Accidental_Leave;
+	drop table Annual_Leave;
+	drop table Leave;
 	drop table Employee_Role;
 	drop table Role_existsIn_Department;
-	drop table Leave;
-	drop table Annual_Leave;
-	drop table Accidental_Leave;
-	drop table Medical_Leave;
-	drop table Unpaid_Leave;
-	drop table Compensation_Leave;
-	drop table Document;
-	drop table Payroll;	
-	drop table Attendance;
-	drop table Deduction;
-	drop table Performance;
-	drop table Employee_Replace_Employee;
-	drop table Employee_Approve_Leave;
+	drop table Employee_Phone;
+	drop table Employee;
+	drop table Role;
+	drop table Department;
 end
-GO;
+GO
+
+Exec dropAllTables;
+
+GO
+create procedure allEmployeeProfiles
+as
+begin
+select employee_ID as ID, first_name as [First Name], last_name as [Last Name], gender, email, address, years_of_experience as [Years of Experience],
+official_day_off as [Official Day Off], type_of_contract as [Type Of Contract],employment_status as [Employment Status], 
+annual_balance as [Annual Balance], accidental_balance as [Accidental Balance] from Employee;
+end;
+GO
+
+GO
+Exec allEmployeeProfiles;
+GO
