@@ -216,9 +216,7 @@ create table Employee_Approve_Leave (
 end
 GO
 
-GO
 Exec createAllTables;
-GO
 
 GO
 create procedure dropAllTables
@@ -256,9 +254,42 @@ begin
 select employee_ID as ID, first_name as [First Name], last_name as [Last Name], gender, email, address, years_of_experience as [Years of Experience],
 official_day_off as [Official Day Off], type_of_contract as [Type Of Contract],employment_status as [Employment Status], 
 annual_balance as [Annual Balance], accidental_balance as [Accidental Balance] from Employee;
-end;
+end
+GO
+
+Exec allEmployeeProfiles;
+
+GO
+create procedure clearAllTables
+as
+begin
+	TRUNCATE TABLE Employee_Approve_Leave;
+	TRUNCATE TABLE Employee_Replace_Employee;
+	TRUNCATE TABLE Performance;
+	TRUNCATE TABLE Deduction;
+	TRUNCATE TABLE Attendance;
+	TRUNCATE TABLE Payroll;
+	TRUNCATE TABLE Document;
+	TRUNCATE TABLE Compensation_Leave;
+	TRUNCATE TABLE Unpaid_Leave;
+	TRUNCATE TABLE Medical_Leave;
+	TRUNCATE TABLE Accidental_Leave;
+	TRUNCATE TABLE Annual_Leave;
+	TRUNCATE TABLE Leave;
+	TRUNCATE TABLE Employee_Role;
+	TRUNCATE TABLE Role_existsIn_Department;
+	TRUNCATE TABLE Employee_Phone;
+	TRUNCATE TABLE Employee;
+	TRUNCATE TABLE Role;
+	TRUNCATE TABLE Department;
+end
 GO
 
 GO
-Exec allEmployeeProfiles;
+create view NoEmployeeDept
+as 
+select d.name, count(e.employee_ID) as [Numbers of Employee/Department]
+from Department d left join Employee e on d.name=e.dept_name
+group by d.name
 GO
+
