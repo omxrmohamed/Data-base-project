@@ -1,13 +1,12 @@
 ﻿create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
-go;
 
-
+GO
 create procedure createAllTables
 as 
 begin
 create table Department(
-	name varchar(50) not null , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
+	name varchar(50)  , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
 	building_location varchar(50),
 	check(name in ('MET', 'IET', 'HR department', 'Medical department')),
 	constraint PK_DPT primary key (name)
@@ -68,6 +67,7 @@ create table Employee_Role (
 create table Role_existsIn_Department (
 	department_name varchar(50), 
 	Role_name varchar(50),
+	constraint PK_ReD primary key (department_name, Role_name),
 	constraint FK_Role_Exist foreign key (role_name) references Role(role_name),
 	constraint FK_role_dept foreign key (department_name) references Department(name)
 );
@@ -89,7 +89,7 @@ create table Annual_Leave (
 	constraint PK_Leave_Annual primary key (request_ID),
 	constraint FK_Leave_Annual foreign key (request_ID) references Leave(request_ID),
 	constraint FK_Employee_Annual foreign key (emp_ID) references Employee(employee_ID),
-	constraint FK_Employee2_Annual foreign key (replacement_emp) references Employee(employee_ID),
+	constraint FK_Employee2_Annual foreign key (replacement_emp) references Employee(employee_ID)
 
 	);
 create table Accidental_Leave (
@@ -192,7 +192,7 @@ create table Performance (
 	rating int, 
 	comments varchar(50), 
 	semester char (3), 
-	emp_ID int
+	emp_ID int,
 	constraint PK_Perform primary key (performance_ID),
 	constraint FK_Employee_perform foreign key (emp_ID) references Employee(employee_ID),
 	check(rating >=1 and rating <= 5)
@@ -214,7 +214,82 @@ create table Employee_Approve_Leave (
 	constraint FK_Employee1_App_leave foreign key (Emp1_ID) references Employee(employee_ID)	
 );
 end
-GO;
-
+GO
 
 Exec createAllTables;
+
+GO
+create procedure dropAllTables
+as
+begin
+
+	drop table Employee_Approve_Leave;
+	drop table Employee_Replace_Employee;
+	drop table Performance;
+	drop table Deduction;
+	drop table Attendance;
+	drop table Payroll;
+	drop table Document;
+	drop table Compensation_Leave;
+	drop table Unpaid_Leave;
+	drop table Medical_Leave;
+	drop table Accidental_Leave;
+	drop table Annual_Leave;
+	drop table Leave;
+	drop table Employee_Role;
+	drop table Role_existsIn_Department;
+	drop table Employee_Phone;
+	drop table Employee;
+	drop table Role;
+	drop table Department;
+end
+GO
+
+Exec dropAllTables;
+
+GO
+create procedure allEmployeeProfiles
+as
+begin
+select employee_ID as ID, first_name as [First Name], last_name as [Last Name], gender, email, address, years_of_experience as [Years of Experience],
+official_day_off as [Official Day Off], type_of_contract as [Type Of Contract],employment_status as [Employment Status], 
+annual_balance as [Annual Balance], accidental_balance as [Accidental Balance] from Employee;
+end
+GO
+
+Exec allEmployeeProfiles;
+
+GO
+create procedure clearAllTables
+as
+begin
+	TRUNCATE TABLE Employee_Approve_Leave;
+	TRUNCATE TABLE Employee_Replace_Employee;
+	TRUNCATE TABLE Performance;
+	TRUNCATE TABLE Deduction;
+	TRUNCATE TABLE Attendance;
+	TRUNCATE TABLE Payroll;
+	TRUNCATE TABLE Document;
+	TRUNCATE TABLE Compensation_Leave;
+	TRUNCATE TABLE Unpaid_Leave;
+	TRUNCATE TABLE Medical_Leave;
+	TRUNCATE TABLE Accidental_Leave;
+	TRUNCATE TABLE Annual_Leave;
+	TRUNCATE TABLE Leave;
+	TRUNCATE TABLE Employee_Role;
+	TRUNCATE TABLE Role_existsIn_Department;
+	TRUNCATE TABLE Employee_Phone;
+	TRUNCATE TABLE Employee;
+	TRUNCATE TABLE Role;
+	TRUNCATE TABLE Department;
+end
+GO
+
+GO
+create view NoEmployeeDept
+as 
+select d.name, count(e.employee_ID) as [Numbers of Employee/Department]
+from Department d left join Employee e on d.name=e.dept_name
+group by d.name
+GO
+
