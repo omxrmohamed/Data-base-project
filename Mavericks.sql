@@ -247,6 +247,7 @@ GO
 
 Exec dropAllTables;
 
+
 GO
 create procedure allEmployeeProfiles
 as
@@ -258,6 +259,7 @@ end
 GO
 
 Exec allEmployeeProfiles;
+
 
 GO
 create procedure clearAllTables
@@ -305,6 +307,7 @@ GO
 
 exec update_Status_Doc
 
+
 GO
 create procedure Remove_Deductions
 as 
@@ -314,6 +317,8 @@ set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
 where e.status = 'resigned'
 end
+GO
+
 --2.2.C
 CREATE VIEW	allPerfromance AS
 SELECT *
