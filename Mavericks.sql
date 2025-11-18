@@ -316,7 +316,7 @@ where e.status = 'resigned'
 end
 Go
 --2.2.C
-CREATE VIEW	allPerfromance AS
+CREATE VIEW	allPerformance AS
 SELECT *
 FROM Performance 
 WHERE semester LIKE 'W%';
@@ -324,7 +324,7 @@ GO
 
 --2.2.D
 CREATE VIEW allRejectedMedicals AS
-SELECT *
+SELECT Medical_Leave.*
 FROM Medical_Leave
 INNER JOIN Leave ON Leave.request_ID = Medical_Leave.request_ID
 WHERE Leave.final_approval_status = 'rejected';
