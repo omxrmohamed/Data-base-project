@@ -301,7 +301,7 @@ as
 begin
 	update Document
 	set status = 'expired'
-	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
+	where expiry_date < cast(CURRENT_TIMESTAMP as Date) and status = 'valid';  -- is it to make all expired valid or vice versa?
 end
 GO
 
@@ -317,10 +317,9 @@ set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
 where e.employment_status = 'resigned'
 end
-GO
-
+Go
 --2.2.C
-CREATE VIEW	allPerfromance AS
+CREATE VIEW	allPerformance AS
 SELECT *
 FROM Performance 
 WHERE semester LIKE 'W%';
