@@ -314,3 +314,31 @@ set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
 where e.status = 'resigned'
 end
+--2.2.C
+CREATE VIEW	allPerfromance AS
+SELECT *
+FROM Performance 
+WHERE semester LIKE 'W%';
+GO
+
+--2.2.D
+CREATE VIEW allRejectedMedicals AS
+SELECT *
+FROM Medical_Leave
+INNER JOIN Leave ON Leave.request_ID = Medical_Leave.request_ID
+WHERE Leave.final_approval_status = 'rejected';
+GO
+
+--2.3.F
+CREATE PROCEDURE Intitiate_Attendance AS
+INSERT INTO Attendance(date,emp_ID)
+SELECT CAST(GETDATE() AS DATE),employee_ID
+FROM Employee;
+GO
+
+--2.3.G
+CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out time AS 
+	UPDATE Attendance
+	SET check_in_time = @check_in, check_out_time= @check_out, status='attended'
+	WHERE emp_ID = @Employee_id AND date=CAST(GETDATE() AS DATE);
+GO
