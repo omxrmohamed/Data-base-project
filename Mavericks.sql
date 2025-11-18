@@ -314,6 +314,7 @@ set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
 where e.status = 'resigned'
 end
+Go
 --2.2.C
 CREATE VIEW	allPerfromance AS
 SELECT *
