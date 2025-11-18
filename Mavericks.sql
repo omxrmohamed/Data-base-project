@@ -1,19 +1,12 @@
-﻿-- 2.1.A
-create database University_HR_ManagementSystem_90;
+﻿create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
-go;
 
-
-<<<<<<< Updated upstream
-=======
 GO
---2.1.B
->>>>>>> Stashed changes
 create procedure createAllTables
 as 
 begin
 create table Department(
-	name varchar(50) not null , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
+	name varchar(50)  , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
 	building_location varchar(50),
 	check(name in ('MET', 'IET', 'HR department', 'Medical department')),
 	constraint PK_DPT primary key (name)
@@ -74,6 +67,7 @@ create table Employee_Role (
 create table Role_existsIn_Department (
 	department_name varchar(50), 
 	Role_name varchar(50),
+	constraint PK_ReD primary key (department_name, Role_name),
 	constraint FK_Role_Exist foreign key (role_name) references Role(role_name),
 	constraint FK_role_dept foreign key (department_name) references Department(name)
 );
@@ -95,7 +89,7 @@ create table Annual_Leave (
 	constraint PK_Leave_Annual primary key (request_ID),
 	constraint FK_Leave_Annual foreign key (request_ID) references Leave(request_ID),
 	constraint FK_Employee_Annual foreign key (emp_ID) references Employee(employee_ID),
-	constraint FK_Employee2_Annual foreign key (replacement_emp) references Employee(employee_ID),
+	constraint FK_Employee2_Annual foreign key (replacement_emp) references Employee(employee_ID)
 
 	);
 create table Accidental_Leave (
@@ -198,7 +192,7 @@ create table Performance (
 	rating int, 
 	comments varchar(50), 
 	semester char (3), 
-	emp_ID int
+	emp_ID int,
 	constraint PK_Perform primary key (performance_ID),
 	constraint FK_Employee_perform foreign key (emp_ID) references Employee(employee_ID),
 	check(rating >=1 and rating <= 5)
@@ -220,14 +214,11 @@ create table Employee_Approve_Leave (
 	constraint FK_Employee1_App_leave foreign key (Emp1_ID) references Employee(employee_ID)	
 );
 end
-GO;
-
-
-<<<<<<< Updated upstream
-Exec createAllTables;
-=======
 GO
---2.1.C
+
+Exec createAllTables;
+
+GO
 create procedure dropAllTables
 as
 begin
@@ -257,7 +248,18 @@ GO
 Exec dropAllTables;
 
 GO
---2.1.E
+create procedure allEmployeeProfiles
+as
+begin
+select employee_ID as ID, first_name as [First Name], last_name as [Last Name], gender, email, address, years_of_experience as [Years of Experience],
+official_day_off as [Official Day Off], type_of_contract as [Type Of Contract],employment_status as [Employment Status], 
+annual_balance as [Annual Balance], accidental_balance as [Accidental Balance] from Employee;
+end
+GO
+
+Exec allEmployeeProfiles;
+
+GO
 create procedure clearAllTables
 as
 begin
@@ -283,20 +285,6 @@ begin
 end
 GO
 
---2.2.A
-GO
-create procedure allEmployeeProfiles
-as
-begin
-select employee_ID as ID, first_name as [First Name], last_name as [Last Name], gender, email, address, years_of_experience as [Years of Experience],
-official_day_off as [Official Day Off], type_of_contract as [Type Of Contract],employment_status as [Employment Status], 
-annual_balance as [Annual Balance], accidental_balance as [Accidental Balance] from Employee;
-end
-GO
-
-Exec allEmployeeProfiles;
-
---2.2.B
 GO
 create view NoEmployeeDept
 as 
@@ -304,6 +292,29 @@ select d.name, count(e.employee_ID) as [Numbers of Employee/Department]
 from Department d left join Employee e on d.name=e.dept_name
 group by d.name
 GO
+
+GO
+create procedure Update_Status_Doc
+as
+begin
+	update Document
+	set status = 'expired'
+	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
+end
+GO
+
+exec update_Status_Doc
+
+GO
+create procedure Remove_Deductions
+as 
+begin
+update Deduction
+set amount=0
+from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
+where e.status = 'resigned'
+end
+Go
 --2.2.C
 CREATE VIEW	allPerfromance AS
 SELECT *
@@ -319,34 +330,6 @@ INNER JOIN Leave ON Leave.request_ID = Medical_Leave.request_ID
 WHERE Leave.final_approval_status = 'rejected';
 GO
 
-
---2.3.A
-GO
-create procedure Update_Status_Doc
-as
-begin
-	update Document
-	set status = 'expired'
-	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
-end
-GO
-
-exec update_Status_Doc
-
---2.3.B
-GO
-create procedure Remove_Deductions
-as 
-begin
-update Deduction
-set amount=0
-from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
-where e.status = 'resigned'
-end
-GO
-
-
-
 --2.3.F
 CREATE PROCEDURE Intitiate_Attendance AS
 INSERT INTO Attendance(date,emp_ID)
@@ -360,4 +343,3 @@ CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out 
 	SET check_in_time = @check_in, check_out_time= @check_out, status='attended'
 	WHERE emp_ID = @Employee_id AND date=CAST(GETDATE() AS DATE);
 GO
->>>>>>> Stashed changes
