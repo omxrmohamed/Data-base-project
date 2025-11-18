@@ -315,7 +315,7 @@ begin
 update Deduction
 set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
-where e.status = 'resigned'
+where e.employment_status = 'resigned'
 end
 GO
 
@@ -328,7 +328,7 @@ GO
 
 --2.2.D
 CREATE VIEW allRejectedMedicals AS
-SELECT *
+SELECT Medical_Leave.*
 FROM Medical_Leave
 INNER JOIN Leave ON Leave.request_ID = Medical_Leave.request_ID
 WHERE Leave.final_approval_status = 'rejected';
