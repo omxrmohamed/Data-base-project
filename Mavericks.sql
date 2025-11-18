@@ -1,8 +1,14 @@
-﻿create database University_HR_ManagementSystem_90;
+﻿-- 2.1.A
+create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
 go;
 
 
+<<<<<<< Updated upstream
+=======
+GO
+--2.1.B
+>>>>>>> Stashed changes
 create procedure createAllTables
 as 
 begin
@@ -217,4 +223,141 @@ end
 GO;
 
 
+<<<<<<< Updated upstream
 Exec createAllTables;
+=======
+GO
+--2.1.C
+create procedure dropAllTables
+as
+begin
+
+	drop table Employee_Approve_Leave;
+	drop table Employee_Replace_Employee;
+	drop table Performance;
+	drop table Deduction;
+	drop table Attendance;
+	drop table Payroll;
+	drop table Document;
+	drop table Compensation_Leave;
+	drop table Unpaid_Leave;
+	drop table Medical_Leave;
+	drop table Accidental_Leave;
+	drop table Annual_Leave;
+	drop table Leave;
+	drop table Employee_Role;
+	drop table Role_existsIn_Department;
+	drop table Employee_Phone;
+	drop table Employee;
+	drop table Role;
+	drop table Department;
+end
+GO
+
+Exec dropAllTables;
+
+GO
+--2.1.E
+create procedure clearAllTables
+as
+begin
+	TRUNCATE TABLE Employee_Approve_Leave;
+	TRUNCATE TABLE Employee_Replace_Employee;
+	TRUNCATE TABLE Performance;
+	TRUNCATE TABLE Deduction;
+	TRUNCATE TABLE Attendance;
+	TRUNCATE TABLE Payroll;
+	TRUNCATE TABLE Document;
+	TRUNCATE TABLE Compensation_Leave;
+	TRUNCATE TABLE Unpaid_Leave;
+	TRUNCATE TABLE Medical_Leave;
+	TRUNCATE TABLE Accidental_Leave;
+	TRUNCATE TABLE Annual_Leave;
+	TRUNCATE TABLE Leave;
+	TRUNCATE TABLE Employee_Role;
+	TRUNCATE TABLE Role_existsIn_Department;
+	TRUNCATE TABLE Employee_Phone;
+	TRUNCATE TABLE Employee;
+	TRUNCATE TABLE Role;
+	TRUNCATE TABLE Department;
+end
+GO
+
+--2.2.A
+GO
+create procedure allEmployeeProfiles
+as
+begin
+select employee_ID as ID, first_name as [First Name], last_name as [Last Name], gender, email, address, years_of_experience as [Years of Experience],
+official_day_off as [Official Day Off], type_of_contract as [Type Of Contract],employment_status as [Employment Status], 
+annual_balance as [Annual Balance], accidental_balance as [Accidental Balance] from Employee;
+end
+GO
+
+Exec allEmployeeProfiles;
+
+--2.2.B
+GO
+create view NoEmployeeDept
+as 
+select d.name, count(e.employee_ID) as [Numbers of Employee/Department]
+from Department d left join Employee e on d.name=e.dept_name
+group by d.name
+GO
+--2.2.C
+CREATE VIEW	allPerfromance AS
+SELECT *
+FROM Performance 
+WHERE semester LIKE 'W%';
+GO
+
+--2.2.D
+CREATE VIEW allRejectedMedicals AS
+SELECT *
+FROM Medical_Leave
+INNER JOIN Leave ON Leave.request_ID = Medical_Leave.request_ID
+WHERE Leave.final_approval_status = 'rejected';
+GO
+
+
+--2.3.A
+GO
+create procedure Update_Status_Doc
+as
+begin
+	update Document
+	set status = 'expired'
+	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
+end
+GO
+
+exec update_Status_Doc
+
+--2.3.B
+GO
+create procedure Remove_Deductions
+as 
+begin
+update Deduction
+set amount=0
+from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
+where e.status = 'resigned'
+end
+GO
+
+
+
+--2.3.F
+CREATE PROCEDURE Intitiate_Attendance AS
+INSERT INTO Attendance(date,emp_ID)
+SELECT CAST(GETDATE() AS DATE),employee_ID
+FROM Employee;
+GO
+
+--2.3.G
+CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out time AS 
+	UPDATE Attendance
+	SET check_in_time = @check_in, check_out_time= @check_out, status='attended'
+	WHERE emp_ID = @Employee_id AND date=CAST(GETDATE() AS DATE);
+GO
+>>>>>>> Stashed changes
