@@ -293,6 +293,27 @@ from Department d left join Employee e on d.name=e.dept_name
 group by d.name
 GO
 
+GO
+create procedure Update_Status_Doc
+as
+begin
+	update Document
+	set status = 'expired'
+	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
+end
+GO
+
+exec update_Status_Doc
+
+GO
+create procedure Remove_Deductions
+as 
+begin
+update Deduction
+set amount=0
+from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
+where e.status = 'resigned'
+end
 --2.2.C
 CREATE VIEW	allPerfromance AS
 SELECT *
