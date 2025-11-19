@@ -343,3 +343,49 @@ CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out 
 	SET check_in_time = @check_in, check_out_time= @check_out, status='attended'
 	WHERE emp_ID = @Employee_id AND date=CAST(GETDATE() AS DATE);
 GO
+
+--2.3.I
+CREATE PROCEDURE Remove_DayOff @Employee_id int AS -- should we check if the attendance status is 'Absent'?
+with tmp as (select emp_ID, official_day_off from Employee where emp_ID = @Employee_id)
+Delete from Attendance
+where emp_ID = @Employee_id and tmp.employee_ID = @Employee_id and DATENAME(WEEKDAY, date) = tmp.official_day_off;
+GO
+
+--2.3.J
+CREATE PROCEDURE Remove_Approved_Leaves 
+    @Employee_id INT
+AS
+BEGIN
+    DELETE FROM Attendance
+    WHERE emp_ID = @Employee_id
+      AND EXISTS (
+            SELECT 1
+            FROM Leave l
+            LEFT JOIN Annual_Leave al ON al.request_ID = l.request_ID
+            LEFT JOIN Accidental_Leave ac ON ac.request_ID = l.request_ID
+            LEFT JOIN Medical_Leave ml ON ml.request_ID = l.request_ID
+            LEFT JOIN Compensation_Leave cl ON cl.request_ID = l.request_ID
+            LEFT JOIN Unpaid_Leave ul ON ul.request_ID = l.request_ID
+            WHERE l.final_approval_status = 'approved'
+              AND (al.emp_ID = @Employee_id
+                OR ac.emp_ID = @Employee_id
+                OR ml.Emp_ID = @Employee_id
+                OR cl.emp_ID = @Employee_id
+                OR ul.Emp_ID = @Employee_id)
+              AND Attendance.date BETWEEN l.start_date AND l.end_date
+        );
+END
+GO
+
+--2.3.K
+CREATE PROCEDURE  Replace_employee 
+	@Emp1_ID INT,
+	@Emp2_ID INT,
+	@From_Date DATE,
+	@To_Date DATE
+AS 
+BEGIN 
+	INSERT INTO Employee_Replace_Employee (Emp1_ID, Emp2_ID, from_date, to_date)
+	VALUES (@Emp1_ID, @Emp2_ID, @From_Date, @To_Date);
+END
+GO
