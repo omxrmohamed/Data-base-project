@@ -293,18 +293,20 @@ from Department d left join Employee e on d.name=e.dept_name
 group by d.name
 GO
 
-GO
+--2.3.A
 create procedure Update_Status_Doc
 as
 begin
 	update Document
 	set status = 'expired'
-	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
+	where expiry_date < cast(CURRENT_TIMESTAMP as date) and status = 'valid';  -- is it to make all expired valid or vice versa?
 end
 GO
 
 exec update_Status_Doc
 
+
+--2.3.B
 GO
 create procedure Remove_Deductions
 as 
@@ -312,9 +314,10 @@ begin
 update Deduction
 set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
-where e.status = 'resigned'
+where e.employment_status = 'resigned'
 end
-Go
+GO
+
 --2.2.C
 CREATE VIEW	allPerformance AS
 SELECT *
@@ -389,3 +392,49 @@ BEGIN
 	VALUES (@Emp1_ID, @Emp2_ID, @From_Date, @To_Date);
 END
 GO
+
+--2.3.D
+GO
+create procedure Create_Holiday
+as
+begin
+create Table Holiday (
+holiday_id int identity(1,1) primary key,
+name varchar (50),
+from_date date,
+to_date date
+);
+end
+GO
+
+--2.3.E
+GO
+create procedure Add_Holiday @holiday_name varchar(50), @from_date date, @to_date date
+as 
+begin 
+insert into Holiday values( @holiday_name, @from_date, @to_date)
+end 
+GO
+
+exec Create_Holiday
+exec Add_Holiday
+
+--2.3.H
+GO
+create procedure Remove_Holiday
+as
+begin
+delete Attendance from Attendance A inner join Holiday H on A.date between H.from_date and H.to_date
+end
+GO
+
+exec Remove_Holiday
+
+--2.2.E
+GO
+create view allEmployeeAttendance 
+as 
+select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on a.emp_ID =e.employee_ID
+where a.date = cast(current_Timestamp -1 as date)
+GO
+
