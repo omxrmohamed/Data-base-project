@@ -287,7 +287,6 @@ begin
 end
 GO
 
-GO
 create view NoEmployeeDept
 as 
 select d.name, count(e.employee_ID) as [Numbers of Employee/Department]
@@ -346,3 +345,38 @@ CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out 
 	SET check_in_time = @check_in, check_out_time= @check_out, status='attended'
 	WHERE emp_ID = @Employee_id AND date=CAST(GETDATE() AS DATE);
 GO
+
+GO
+CREATE PROCEDURE Create_Holiday
+AS
+BEGIN
+    
+    CREATE TABLE Holiday (
+        holiday_id INT IDENTITY(1,1) PRIMARY KEY, 
+        name VARCHAR(50),                        
+        from_date DATE,                          
+        to_date DATE                              
+    );
+END
+GO
+
+GO
+create procedure Add_Holiday @holiday_name varchar(50), @from_date date, @to_date date
+as
+begin
+insert into Holiday values (@holiday_name, @from_date, @to_date)
+end
+GO
+
+exec Add_Holiday
+exec Create_Holiday
+
+GO
+create procedure Remove_Holiday
+as
+begin 
+delete Attendance from Attendance A inner join Holiday H on A.date between H.from_date and H.to_date
+end
+GO
+
+exec Remove_Holiday
