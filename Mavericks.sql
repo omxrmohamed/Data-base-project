@@ -247,7 +247,6 @@ GO
 
 Exec dropAllTables;
 
-
 GO
 create procedure allEmployeeProfiles
 as
@@ -259,7 +258,6 @@ end
 GO
 
 Exec allEmployeeProfiles;
-
 
 GO
 create procedure clearAllTables
@@ -287,6 +285,7 @@ begin
 end
 GO
 
+GO
 create view NoEmployeeDept
 as 
 select d.name, count(e.employee_ID) as [Numbers of Employee/Department]
@@ -294,19 +293,20 @@ from Department d left join Employee e on d.name=e.dept_name
 group by d.name
 GO
 
-GO
+--2.3.A
 create procedure Update_Status_Doc
 as
 begin
 	update Document
 	set status = 'expired'
-	where expiry_date < cast(CURRENT_TIMESTAMP as Date) and status = 'valid';  -- is it to make all expired valid or vice versa?
+	where expiry_date < cast(CURRENT_TIMESTAMP as date) and status = 'valid';  -- is it to make all expired valid or vice versa?
 end
 GO
 
 exec update_Status_Doc
 
 
+--2.3.B
 GO
 create procedure Remove_Deductions
 as 
@@ -316,7 +316,8 @@ set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
 where e.employment_status = 'resigned'
 end
-Go
+GO
+
 --2.2.C
 CREATE VIEW	allPerformance AS
 SELECT *
@@ -345,3 +346,95 @@ CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out 
 	SET check_in_time = @check_in, check_out_time= @check_out, status='attended'
 	WHERE emp_ID = @Employee_id AND date=CAST(GETDATE() AS DATE);
 GO
+
+--2.3.I
+CREATE PROCEDURE Remove_DayOff @Employee_id int AS -- should we check if the attendance status is 'Absent'?
+with tmp as (select emp_ID, official_day_off from Employee where emp_ID = @Employee_id)
+Delete from Attendance
+where emp_ID = @Employee_id and tmp.employee_ID = @Employee_id and DATENAME(WEEKDAY, date) = tmp.official_day_off;
+GO
+
+--2.3.J
+CREATE PROCEDURE Remove_Approved_Leaves 
+    @Employee_id INT
+AS
+BEGIN
+    DELETE FROM Attendance
+    WHERE emp_ID = @Employee_id
+      AND EXISTS (
+            SELECT 1
+            FROM Leave l
+            LEFT JOIN Annual_Leave al ON al.request_ID = l.request_ID
+            LEFT JOIN Accidental_Leave ac ON ac.request_ID = l.request_ID
+            LEFT JOIN Medical_Leave ml ON ml.request_ID = l.request_ID
+            LEFT JOIN Compensation_Leave cl ON cl.request_ID = l.request_ID
+            LEFT JOIN Unpaid_Leave ul ON ul.request_ID = l.request_ID
+            WHERE l.final_approval_status = 'approved'
+              AND (al.emp_ID = @Employee_id
+                OR ac.emp_ID = @Employee_id
+                OR ml.Emp_ID = @Employee_id
+                OR cl.emp_ID = @Employee_id
+                OR ul.Emp_ID = @Employee_id)
+              AND Attendance.date BETWEEN l.start_date AND l.end_date
+        );
+END
+GO
+
+--2.3.K
+CREATE PROCEDURE  Replace_employee 
+	@Emp1_ID INT,
+	@Emp2_ID INT,
+	@From_Date DATE,
+	@To_Date DATE
+AS 
+BEGIN 
+	INSERT INTO Employee_Replace_Employee (Emp1_ID, Emp2_ID, from_date, to_date)
+	VALUES (@Emp1_ID, @Emp2_ID, @From_Date, @To_Date);
+END
+GO
+
+--2.3.D
+GO
+create procedure Create_Holiday
+as
+begin
+create Table Holiday (
+holiday_id int identity(1,1) primary key,
+name varchar (50),
+from_date date,
+to_date date
+);
+end
+GO
+
+--2.3.E
+GO
+create procedure Add_Holiday @holiday_name varchar(50), @from_date date, @to_date date
+as 
+begin 
+insert into Holiday values( @holiday_name, @from_date, @to_date)
+end 
+GO
+
+exec Create_Holiday
+exec Add_Holiday
+
+--2.3.H
+GO
+create procedure Remove_Holiday
+as
+begin
+delete Attendance from Attendance A inner join Holiday H on A.date between H.from_date and H.to_date
+end
+GO
+
+exec Remove_Holiday
+
+--2.2.E
+GO
+create view allEmployeeAttendance 
+as 
+select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on a.emp_ID =e.employee_ID
+where a.date = cast(current_Timestamp -1 as date)
+GO
+
