@@ -438,3 +438,65 @@ select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on
 where a.date = cast(current_Timestamp -1 as date)
 GO
 
+--2.4.D
+GO
+create or alter procedure HR_approval_comp @request_ID int, @HR_ID int -- how to do it
+as 
+begin 
+UPDATE Leave
+	SET final_approval_status = 
+		CASE 
+			WHEN final_approval_status = 'approved' THEN 'rejected'
+			WHEN final_approval_status = 'rejected' THEN 'approved'
+			ELSE 'approved'
+		END
+	WHERE request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+	and  D.name= 'HR department' )
+end
+GO
+
+--2.5.B
+GO
+create function MyPerformance (@employee_ID int, @semester char(3))
+returns table
+as
+return
+(
+select e.first_name, e.last_name, p.* from Employee e join Performance p on e.employee_ID = p.performance_ID 
+where e.employee_ID = @employee_ID and p.semester = @semester
+)
+GO
+
+
+--2.5.C
+GO
+CREATE FUNCTION MyAttendance(@employee_ID int)
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT A.date, A.check_in_time, A.check_out_time, A.total_duration, A.status
+    FROM Attendance A
+    INNER JOIN Employee E ON A.emp_ID = E.employee_ID
+    WHERE A.emp_ID = @employee_ID
+   
+    AND MONTH(A.date) = MONTH(GETDATE())
+   
+  
+    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
+)
+GO
+
+
+--2.5.D
+GO
+create function Last_month_payroll (@employee_ID int)
+returns table
+as
+return
+(
+select e.first_name, e.last_name, p.* from Employee e join Payroll p on e.employee_ID = p.emp_ID
+where e.employee_ID= @employee_ID  and month(p.payment_date) = month(DATEADD(month, -1, GETDATE()))
+    and year(p.payment_date) = year(DATEADD(month, -1, GETDATE()))
+)
+GO
