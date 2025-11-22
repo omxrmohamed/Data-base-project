@@ -438,3 +438,9 @@ select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on
 where a.date = cast(current_Timestamp -1 as date)
 GO
 
+--2.4.D
+GO
+create procedure HR_approval_comp @request_ID int, @HR_ID int
+as 
+begin 
+update Leave l join compensation_Leave cl on l.
