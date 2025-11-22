@@ -455,6 +455,19 @@ UPDATE Leave
 end
 GO
 
+--2.5.B
+GO
+create function MyPerformance (@employee_ID int, @semester char(3))
+returns table
+as
+return
+(
+select e.first_name, e.last_name, p.* from Employee e join Performance p on e.employee_ID = p.performance_ID 
+where e.employee_ID = @employee_ID and p.semester = @semester
+)
+GO
+
+
 --2.5.C
 GO
 CREATE FUNCTION MyAttendance(@employee_ID int)
