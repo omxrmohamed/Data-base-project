@@ -339,7 +339,7 @@ INSERT INTO Attendance(date,emp_ID)
 SELECT CAST(GETDATE() AS DATE),employee_ID
 FROM Employee;
 GO
-
+ 
 --2.3.G
 CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out time AS 
 	UPDATE Attendance
@@ -454,6 +454,11 @@ UPDATE Leave
 	and  D.name= 'HR department' )
 end
 GO
+
+--2.5.A
+GO
+create function EmployeeLoginValidation
+
 
 --2.5.B
 GO
