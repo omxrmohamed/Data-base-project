@@ -438,6 +438,79 @@ select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on
 where a.date = cast(current_Timestamp -1 as date)
 GO
 
+
+-- 2.4.A
+GO
+create procedure HRLoginValidation @employee_ID int, @password varchar(50), @isValid BIT OUTPUT
+as
+begin 
+if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
+	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+	and  D.name= 'HR department')
+	set @isValid = 1
+else 
+	set @isValid = 0
+end
+go
+-- 2.4.B
+go
+create procedure  HR_approval_an_acc @request_ID int, @HR_ID int
+as
+begin 
+	declare @nd int
+	set @nd = (select num_days from leave where request_ID = @request_ID)
+	if exists(select * from Accidental_Leave al join Employee e on al.emp_ID = e.employee_ID
+				where e.accidental_balance > 0 and request_ID = @request_ID)
+
+				begin 
+			update leave 
+				 SET final_approval_status = 
+					CASE 
+						WHEN final_approval_status = 'approved' THEN 'rejected'
+						WHEN final_approval_status = 'rejected' THEN 'approved'
+						ELSE 'approved'
+					END
+					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+					and  D.name= 'HR department');
+			update Employee
+			set accidental_balance = accidental_balance - @nd
+			where employee_ID = (select emp_ID from Accidental_Leave where request_ID = @request_ID);
+			end
+	else if exists(select * from Annual_Leave al join Employee e on al.emp_ID = e.employee_ID
+				where e.annual_balance > 0 and request_ID = @request_ID)
+				begin
+				update leave 
+				 SET final_approval_status = 
+					CASE 
+						WHEN final_approval_status = 'approved' THEN 'rejected'
+						WHEN final_approval_status = 'rejected' THEN 'approved'
+						ELSE 'approved'
+					END
+					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+					and  D.name= 'HR department');
+					update Employee
+					set annual_balance = annual_balance - @nd
+					where employee_ID = (select emp_ID from Annual_Leave where request_ID = @request_ID);
+				end
+end
+go
+
+--2.4.C
+go
+create procedure HR_approval_unpaid @request_ID int, @HR_ID int
+as
+begin
+	
+	update Leave 
+		 SET final_approval_status = 
+					CASE 
+						WHEN final_approval_status = 'approved' THEN 'rejected'
+						WHEN final_approval_status = 'rejected' THEN 'approved'
+						ELSE 'approved'
+					END
+		where request_ID = @request_ID
+end
+go
 --2.4.D
 GO
 create or alter procedure HR_approval_comp @request_ID int, @HR_ID int -- how to do it
@@ -457,8 +530,30 @@ GO
 
 --2.5.A
 GO
-create function EmployeeLoginValidation
+create function EmployeeLoginValidation (@employee_ID INT, @password VARCHAR(50))
+RETURNS BIT
+AS
+BEGIN
+	DECLARE @isValid BIT;
 
+	IF EXISTS (
+		SELECT 1 
+		FROM Employee 
+		WHERE employee_ID = @employee_ID 
+		  AND password = @password
+		  AND employment_status = 'active'
+	)
+	BEGIN
+		SET @isValid = 1;
+	END
+	ELSE
+	BEGIN
+		SET @isValid = 0;
+	END
+
+	RETURN @isValid;
+END
+GO
 
 --2.5.B
 GO
@@ -486,12 +581,10 @@ RETURN
     WHERE A.emp_ID = @employee_ID
    
     AND MONTH(A.date) = MONTH(GETDATE())
-   
-  
+	AND YEAR(A.date) = YEAR(GETDATE())
     AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
 )
 GO
-
 
 --2.5.D
 GO
@@ -505,3 +598,11 @@ where e.employee_ID= @employee_ID  and month(p.payment_date) = month(DATEADD(mon
     and year(p.payment_date) = year(DATEADD(month, -1, GETDATE()))
 )
 GO
+
+--2.5.E
+GO
+create function Deductions_Attendance(@employee_ID int, @month int)
+returns table
+as 
+return select * from Deduction d join Attendance a on d.attendance_ID = a.attendance_ID
+where d.emp_ID = @employee_ID and month(a.date) = @month
