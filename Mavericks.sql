@@ -293,18 +293,20 @@ from Department d left join Employee e on d.name=e.dept_name
 group by d.name
 GO
 
-GO
+--2.3.A
 create procedure Update_Status_Doc
 as
 begin
 	update Document
 	set status = 'expired'
-	where expiry_date < CURRENT_TIMESTAMP and status = 'valid';  -- is it to make all expired valid or vice versa?
+	where expiry_date < cast(CURRENT_TIMESTAMP as date) and status = 'valid';  -- is it to make all expired valid or vice versa?
 end
 GO
 
 exec update_Status_Doc
 
+
+--2.3.B
 GO
 create procedure Remove_Deductions
 as 
@@ -312,11 +314,12 @@ begin
 update Deduction
 set amount=0
 from Deduction d inner join Employee e on e.employee_ID = d.emp_ID 
-where e.status = 'resigned'
+where e.employment_status = 'resigned'
 end
-Go
+GO
+
 --2.2.C
-CREATE VIEW	allPerfromance AS
+CREATE VIEW	allPerformance AS
 SELECT *
 FROM Performance 
 WHERE semester LIKE 'W%';
@@ -324,7 +327,7 @@ GO
 
 --2.2.D
 CREATE VIEW allRejectedMedicals AS
-SELECT *
+SELECT Medical_Leave.*
 FROM Medical_Leave
 INNER JOIN Leave ON Leave.request_ID = Medical_Leave.request_ID
 WHERE Leave.final_approval_status = 'rejected';
@@ -388,4 +391,185 @@ BEGIN
 	INSERT INTO Employee_Replace_Employee (Emp1_ID, Emp2_ID, from_date, to_date)
 	VALUES (@Emp1_ID, @Emp2_ID, @From_Date, @To_Date);
 END
+GO
+
+--2.3.D
+GO
+create procedure Create_Holiday
+as
+begin
+create Table Holiday (
+holiday_id int identity(1,1) primary key,
+name varchar (50),
+from_date date,
+to_date date
+);
+end
+GO
+
+--2.3.E
+GO
+create procedure Add_Holiday @holiday_name varchar(50), @from_date date, @to_date date
+as 
+begin 
+insert into Holiday values( @holiday_name, @from_date, @to_date)
+end 
+GO
+
+exec Create_Holiday
+exec Add_Holiday
+
+--2.3.H
+GO
+create procedure Remove_Holiday
+as
+begin
+delete Attendance from Attendance A inner join Holiday H on A.date between H.from_date and H.to_date
+end
+GO
+
+exec Remove_Holiday
+
+--2.2.E
+GO
+create view allEmployeeAttendance 
+as 
+select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on a.emp_ID =e.employee_ID
+where a.date = cast(current_Timestamp -1 as date)
+GO
+
+
+-- 2.4.A
+GO
+create procedure HRLoginValidation @employee_ID int, @password varchar(50), @isValid BIT OUTPUT
+as
+begin 
+if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
+	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+	and  D.name= 'HR department')
+	set @isValid = 1
+else 
+	set @isValid = 0
+end
+go
+-- 2.4.B
+go
+create procedure  HR_approval_an_acc @request_ID int, @HR_ID int
+as
+begin 
+	declare @nd int
+	set @nd = (select num_days from leave where request_ID = @request_ID)
+	if exists(select * from Accidental_Leave al join Employee e on al.emp_ID = e.employee_ID
+				where e.accidental_balance > 0 and request_ID = @request_ID)
+
+				begin 
+			update leave 
+				 SET final_approval_status = 
+					CASE 
+						WHEN final_approval_status = 'approved' THEN 'rejected'
+						WHEN final_approval_status = 'rejected' THEN 'approved'
+						ELSE 'approved'
+					END
+					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+					and  D.name= 'HR department');
+			update Employee
+			set accidental_balance = accidental_balance - @nd
+			where employee_ID = (select emp_ID from Accidental_Leave where request_ID = @request_ID);
+			end
+	else if exists(select * from Annual_Leave al join Employee e on al.emp_ID = e.employee_ID
+				where e.annual_balance > 0 and request_ID = @request_ID)
+				begin
+				update leave 
+				 SET final_approval_status = 
+					CASE 
+						WHEN final_approval_status = 'approved' THEN 'rejected'
+						WHEN final_approval_status = 'rejected' THEN 'approved'
+						ELSE 'approved'
+					END
+					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+					and  D.name= 'HR department');
+					update Employee
+					set annual_balance = annual_balance - @nd
+					where employee_ID = (select emp_ID from Annual_Leave where request_ID = @request_ID);
+				end
+end
+go
+
+--2.4.C
+go
+create procedure HR_approval_unpaid @request_ID int, @HR_ID int
+as
+begin
+	
+	update Leave 
+		 SET final_approval_status = 
+					CASE 
+						WHEN final_approval_status = 'approved' THEN 'rejected'
+						WHEN final_approval_status = 'rejected' THEN 'approved'
+						ELSE 'approved'
+					END
+		where request_ID = @request_ID
+end
+go
+--2.4.D
+GO
+create or alter procedure HR_approval_comp @request_ID int, @HR_ID int -- how to do it
+as 
+begin 
+UPDATE Leave
+	SET final_approval_status = 
+		CASE 
+			WHEN final_approval_status = 'approved' THEN 'rejected'
+			WHEN final_approval_status = 'rejected' THEN 'approved'
+			ELSE 'approved'
+		END
+	WHERE request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+	and  D.name= 'HR department' )
+end
+GO
+
+--2.5.B
+GO
+create function MyPerformance (@employee_ID int, @semester char(3))
+returns table
+as
+return
+(
+select e.first_name, e.last_name, p.* from Employee e join Performance p on e.employee_ID = p.performance_ID 
+where e.employee_ID = @employee_ID and p.semester = @semester
+)
+GO
+
+
+--2.5.C
+GO
+CREATE FUNCTION MyAttendance(@employee_ID int)
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT A.date, A.check_in_time, A.check_out_time, A.total_duration, A.status
+    FROM Attendance A
+    INNER JOIN Employee E ON A.emp_ID = E.employee_ID
+    WHERE A.emp_ID = @employee_ID
+   
+    AND MONTH(A.date) = MONTH(GETDATE())
+   
+  
+    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
+)
+GO
+
+
+--2.5.D
+GO
+create function Last_month_payroll (@employee_ID int)
+returns table
+as
+return
+(
+select e.first_name, e.last_name, p.* from Employee e join Payroll p on e.employee_ID = p.emp_ID
+where e.employee_ID= @employee_ID  and month(p.payment_date) = month(DATEADD(month, -1, GETDATE()))
+    and year(p.payment_date) = year(DATEADD(month, -1, GETDATE()))
+)
 GO
