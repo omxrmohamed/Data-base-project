@@ -573,3 +573,11 @@ where e.employee_ID= @employee_ID  and month(p.payment_date) = month(DATEADD(mon
     and year(p.payment_date) = year(DATEADD(month, -1, GETDATE()))
 )
 GO
+
+--2.5.E
+GO
+create function Deductions_Attendance(@employee_ID int, @month int)
+returns table
+as 
+return select * from Deduction d join Attendance a on d.attendance_ID = a.attendance_ID
+where d.emp_ID = @employee_ID and month(a.date) = @month
