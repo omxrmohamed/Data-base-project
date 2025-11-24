@@ -1,6 +1,6 @@
 ﻿create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
-
+drop database University_HR_ManagementSystem_90;
 GO
 create procedure createAllTables
 as 
@@ -8,7 +8,7 @@ begin
 create table Department(
 	name varchar(50)  , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
 	building_location varchar(50),
-	check(name in ('MET', 'IET', 'HR department', 'Medical department')),
+	check(name in ('MET', 'IET', 'BI','HR', 'Medical')),
 	constraint PK_DPT primary key (name)
 );
 create table Employee( 
@@ -76,7 +76,7 @@ create table Leave (
 	date_of_request date,
 	start_date date,
 	end_date date, 
-	num_days  as datediff(day, end_date, start_date), 
+	num_days  as datediff(day, start_date, end_date) + 1, 
 	final_approval_status varchar (50) default 'pending',
 	check(final_approval_status in ('pending', 'approved', 'rejected')),
 	constraint PK_Leave primary key (request_ID)
@@ -140,7 +140,7 @@ create table Document (
 	medical_ID int, 
 	unpaid_ID int,
 	check(status in ('valid', 'expired')),
-	check(type in ('contract', 'medical report', 'national ID')), -- not sure of this
+	check(type in ('contract', 'medical report', 'national ID', 'Memo')), -- not sure of this
 	constraint PK_Doc primary key (document_ID),
 	constraint FK_Employee_Doc foreign key (emp_ID) references Employee(employee_ID),
 	constraint FK_MED_Doc foreign key (medical_ID) references Medical_Leave(request_ID),
@@ -169,7 +169,7 @@ create table Attendance (
 	emp_ID int,
 	constraint PK_att primary key (attendance_ID),
 	constraint FK_Employee_att foreign key (emp_ID) references Employee(employee_ID),
-	check(status in ('Absent', 'attended'))
+	check(status in ('absent', 'attended'))
 	)  ;
 create table Deduction (
 	deduction_ID int identity(1,1), 
@@ -198,11 +198,12 @@ create table Performance (
 	check(rating >=1 and rating <= 5)
 );
 create table Employee_Replace_Employee (
+	Table_ID int identity(1,1), 
 	Emp1_ID int, 
 	Emp2_ID int, 
 	from_date date, 
 	to_date date,
-	constraint PK_Replace primary key (Emp1_ID, Emp2_ID),
+	constraint PK_Replace primary key (Table_ID, Emp1_ID, Emp2_ID),
 	constraint FK_Employee1_replace foreign key (Emp1_ID) references Employee(employee_ID)	,
 	constraint FK_Employee2_replace foreign key (Emp2_ID) references Employee(employee_ID)	
 );
@@ -439,6 +440,34 @@ where a.date = cast(current_Timestamp -1 as date)
 GO
 
 
+--2.3.C
+CREATE PROCEDURE Update_Employment_Status (
+@employee_ID INT
+)
+AS
+BEGIN
+DECLARE @isOnLeave BIT;
+SET @isOnLeave = dbo.Is_On_Leave(
+@employee_ID, 
+CAST(CURRENT_TIMESTAMP AS DATE), 
+CAST(CURRENT_TIMESTAMP AS DATE)
+);
+
+IF @isOnLeave = 1
+BEGIN
+UPDATE Employee 
+SET employment_status = 'onleave' 
+WHERE employee_ID = @employee_ID;
+END
+ELSE
+BEGIN
+UPDATE Employee 
+SET employment_status = 'active'
+WHERE employee_ID = @employee_ID;
+END
+END
+GO
+
 -- 2.4.A
 GO
 create procedure HRLoginValidation @employee_ID int, @password varchar(50), @isValid BIT OUTPUT
@@ -446,7 +475,7 @@ as
 begin 
 if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
 	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-	and  D.name= 'HR department')
+	and  D.name= 'HR')
 	set @isValid = 1
 else 
 	set @isValid = 0
@@ -471,7 +500,7 @@ begin
 						ELSE 'approved'
 					END
 					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-					and  D.name= 'HR department');
+					and  D.name= 'HR');
 			update Employee
 			set accidental_balance = accidental_balance - @nd
 			where employee_ID = (select emp_ID from Accidental_Leave where request_ID = @request_ID);
@@ -487,7 +516,7 @@ begin
 						ELSE 'approved'
 					END
 					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-					and  D.name= 'HR department');
+					and  D.name= 'HR');
 					update Employee
 					set annual_balance = annual_balance - @nd
 					where employee_ID = (select emp_ID from Annual_Leave where request_ID = @request_ID);
@@ -524,8 +553,56 @@ UPDATE Leave
 			ELSE 'approved'
 		END
 	WHERE request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-	and  D.name= 'HR department' )
+	and  D.name= 'HR' )
 end
+GO
+
+--2.4.E
+CREATE PROCEDURE Deduction_hours
+    @employee_ID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @attendance_id INT,
+            @date DATE,
+            @hours INT,
+            @missing_hours INT,
+            @salary DECIMAL(10,2),
+            @rate_per_hour DECIMAL(10,4),
+            @amount DECIMAL(10,2);
+
+    SELECT TOP 1
+        @attendance_id = attendance_ID,
+        @date = date,
+        @hours = total_duration
+    FROM Attendance
+    WHERE emp_ID = @employee_ID
+      AND status = 'attended'            
+      AND total_duration < 8              
+      AND total_duration IS NOT NULL
+      AND MONTH(date) = MONTH(GETDATE())
+      AND YEAR(date) = YEAR(GETDATE())
+    ORDER BY date ASC;                   
+
+
+    IF @attendance_id IS NULL
+        RETURN;
+
+    SET @missing_hours = 8 - @hours;
+
+    SELECT @salary = salary
+    FROM Employee
+    WHERE employee_ID = @employee_ID;
+
+
+    SET @rate_per_hour = (@salary / 22) / 8;
+    SET @amount = @missing_hours * @rate_per_hour;
+
+
+    INSERT INTO Deduction (emp_ID, date, amount, type, status, unpaid_ID, attendance_ID)
+    VALUES (@employee_ID, @date, @amount, 'missing_hours', 'pending', NULL, @attendance_id);
+END
 GO
 
 --2.5.B
@@ -556,7 +633,7 @@ RETURN
     AND MONTH(A.date) = MONTH(GETDATE())
    
   
-    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
+    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'absent')
 )
 GO
 
@@ -579,5 +656,47 @@ GO
 create function Deductions_Attendance(@employee_ID int, @month int)
 returns table
 as 
-return select * from Deduction d join Attendance a on d.attendance_ID = a.attendance_ID
+return select d.* from Deduction d inner join Attendance a on d.attendance_ID = a.attendance_ID
 where d.emp_ID = @employee_ID and month(a.date) = @month
+Go
+
+--2.5.F
+CREATE FUNCTION Is_On_Leave (
+@employee_ID INT,
+@from_date DATE,
+@to_date DATE
+)
+RETURNS BIT
+AS
+BEGIN
+DECLARE @IsOnLeave BIT = 0;
+
+IF EXISTS (
+SELECT 1
+FROM Leave L
+INNER JOIN (
+SELECT request_ID, emp_ID FROM Annual_Leave
+UNION
+SELECT request_ID, emp_ID FROM Accidental_Leave
+UNION
+SELECT request_ID, Emp_ID FROM Medical_Leave
+UNION
+SELECT request_ID, Emp_ID FROM Unpaid_Leave
+) AS X
+ON L.request_ID = X.request_ID
+WHERE X.emp_ID = @employee_ID
+AND (L.final_approval_status = 'approved'
+OR L.final_approval_status = 'pending')
+AND L.start_date <= @to_date
+AND L.end_date >= @from_date
+)
+BEGIN
+SET @IsOnLeave = 1;
+END
+
+RETURN @IsOnLeave;
+END
+GO
+go
+
+
