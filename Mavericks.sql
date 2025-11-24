@@ -928,3 +928,314 @@ RETURN @IsOnLeave;
 END
 GO
 go
+
+--2.5.G
+CREATE PROCEDURE Submit_annual
+    @employee_ID INT,
+    @replacement_emp INT,
+    @start_date DATE,
+    @end_date DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT INTO [Leave] (date_of_request, start_date, end_date, final_approval_status)
+    VALUES (CAST(GETDATE() AS DATE), @start_date, @end_date, 'pending');
+
+    DECLARE @req_id INT = SCOPE_IDENTITY();
+
+    INSERT INTO Annual_Leave (request_ID, emp_ID, replacement_emp)
+    VALUES (@req_id, @employee_ID, @replacement_emp);
+    DECLARE @dept_name varchar(50);
+    DECLARE @role_name varchar(50);
+
+    SELECT @dept_name = dept_name FROM Employee WHERE employee_ID = @employee_ID;
+    SELECT TOP 1 @role_name = R.role_name 
+    FROM Employee_Role ER 
+    JOIN Role R ON ER.role_name = R.role_name
+    WHERE ER.emp_ID = @employee_ID
+    ORDER BY R.rank ASC;
+
+    DECLARE @president_ID int, @hr_mgr_ID int, @hr_rep_ID int, @dean_ID int;
+    SELECT TOP 1 @president_ID = ER.emp_ID FROM Employee_Role ER WHERE ER.role_name = 'President';
+    SELECT TOP 1 @hr_mgr_ID = ER.emp_ID FROM Employee_Role ER WHERE ER.role_name = 'HR Manager';
+    SELECT TOP 1 @hr_rep_ID = ER.emp_ID FROM Employee_Role ER WHERE ER.role_name = 'HR Representative';
+    IF @role_name IN ('Dean', 'Vice Dean')
+    BEGIN
+        INSERT INTO Employee_Approve_Leave VALUES (@president_ID, @req_id, 'pending');
+        INSERT INTO Employee_Approve_Leave VALUES (@hr_rep_ID, @req_id, 'pending');
+    END
+    ELSE IF @dept_name = 'HR department'
+    BEGIN
+        INSERT INTO Employee_Approve_Leave VALUES (@president_ID, @req_id, 'pending');
+        INSERT INTO Employee_Approve_Leave VALUES (@hr_mgr_ID, @req_id, 'pending');
+    END
+    ELSE
+    BEGIN
+        SELECT TOP 1 @dean_ID = ER.emp_ID
+        FROM Employee E JOIN Employee_Role ER ON E.employee_ID = ER.emp_ID
+        WHERE ER.role_name = 'Dean' AND E.dept_name = @dept_name;
+
+        IF @dean_ID IS NOT NULL
+            INSERT INTO Employee_Approve_Leave VALUES (@dean_ID, @req_id, 'pending');
+        
+        INSERT INTO Employee_Approve_Leave VALUES (@hr_rep_ID, @req_id, 'pending');
+        INSERT INTO Employee_Approve_Leave VALUES (@hr_mgr_ID, @req_id, 'pending');
+    END
+END
+GO
+
+--2.5.H
+CREATE FUNCTION Status_leaves(@employee_ID INT)
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT L.request_ID, L.date_of_request, L.final_approval_status AS status
+    FROM [Leave] L
+    WHERE (
+            L.request_ID IN (SELECT request_ID FROM Annual_Leave WHERE emp_ID = @employee_ID)
+            OR
+            L.request_ID IN (SELECT request_ID FROM Accidental_Leave WHERE emp_ID = @employee_ID)
+          )
+      AND MONTH(L.date_of_request) = MONTH(GETDATE())
+      AND YEAR(L.date_of_request) = YEAR(GETDATE())
+);
+GO
+
+--2.5.I
+CREATE PROCEDURE Upperboard_approve_annual
+    @request_ID INT,
+    @Upperboard_ID INT,
+    @replacement_ID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Annual_Leave SET replacement_emp = @replacement_ID WHERE request_ID = @request_ID;
+
+    DECLARE @app_emp INT;
+    DECLARE @start DATE, @end DATE;
+
+    SELECT @app_emp = emp_ID FROM Annual_Leave WHERE request_ID = @request_ID;
+    SELECT @start = start_date, @end = end_date FROM [Leave] WHERE request_ID = @request_ID;
+
+    DECLARE @app_dept varchar(50), @rep_dept varchar(50);
+    SELECT @app_dept = dept_name FROM Employee WHERE employee_ID = @app_emp;
+    SELECT @rep_dept = dept_name FROM Employee WHERE employee_ID = @replacement_ID;
+
+    DECLARE @replacement_busy BIT = 0;
+    IF EXISTS (
+        SELECT 1 FROM [Leave] L
+        JOIN (
+            SELECT request_ID FROM Annual_Leave WHERE emp_ID = @replacement_ID
+            UNION ALL SELECT request_ID FROM Accidental_Leave WHERE emp_ID = @replacement_ID
+            UNION ALL SELECT request_ID FROM Medical_Leave WHERE Emp_ID = @replacement_ID
+            UNION ALL SELECT request_ID FROM Unpaid_Leave WHERE Emp_ID = @replacement_ID
+            UNION ALL SELECT request_ID FROM Compensation_Leave WHERE emp_ID = @replacement_ID
+        ) R ON L.request_ID = R.request_ID
+        WHERE L.final_approval_status IN ('approved', 'pending')
+        AND (L.start_date <= @end AND L.end_date >= @start) 
+    )
+    BEGIN
+        SET @replacement_busy = 1;
+    END
+
+    IF (@app_dept = @rep_dept AND @replacement_busy = 0)
+    BEGIN
+        UPDATE [Leave] SET final_approval_status = 'approved' WHERE request_ID = @request_ID;
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status)
+        VALUES (@Upperboard_ID, @request_ID, 'approved');
+    END
+    ELSE
+    BEGIN
+        UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status)
+        VALUES (@Upperboard_ID, @request_ID, 'rejected');
+    END
+END
+GO
+
+--2.5.J
+CREATE PROCEDURE Submit_accidental
+    @employee_ID INT,
+    @start_date DATE,
+    @end_date DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO [Leave] (date_of_request, start_date, end_date, final_approval_status)
+    VALUES (CAST(GETDATE() AS DATE), @start_date, @end_date, 'pending');
+
+    DECLARE @req_id INT = SCOPE_IDENTITY();
+
+    INSERT INTO Accidental_Leave (request_ID, emp_ID) VALUES (@req_id, @employee_ID);
+
+    DECLARE @hrrep INT;
+    SELECT TOP 1 @hrrep = E.employee_ID
+    FROM Employee E
+    JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID
+    WHERE ER.role_name LIKE 'HR_Representative%';
+
+    IF @hrrep IS NOT NULL
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@hrrep, @req_id, 'pending');
+END
+GO
+
+--2.5.K
+CREATE PROCEDURE Submit_medical
+    @employee_ID INT,
+    @start_date DATE,
+    @end_date DATE,
+    @type varchar(50),
+    @insurance_status BIT,
+    @disability_details varchar(50),
+    @document_description varchar(50),
+    @file_name varchar(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO [Leave] (date_of_request, start_date, end_date, final_approval_status)
+    VALUES (CAST(GETDATE() AS DATE), @start_date, @end_date, 'pending');
+
+    DECLARE @req_id INT = SCOPE_IDENTITY();
+
+    INSERT INTO Medical_Leave (request_ID, insurance_status, disability_details, type, Emp_ID)
+    VALUES (@req_id, @insurance_status, @disability_details, @type, @employee_ID);
+
+    IF @document_description IS NOT NULL
+    BEGIN
+        INSERT INTO Document (type, description, file_name, creation_date, status, emp_ID, medical_ID)
+        VALUES ('medical', @document_description, @file_name, CAST(GETDATE() AS DATE), 'valid', @employee_ID, @req_id);
+    END
+
+    DECLARE @meddoc INT;
+    SELECT TOP 1 @meddoc = E.employee_ID FROM Employee E JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID WHERE ER.role_name = 'Medical Doctor';
+
+    DECLARE @hrrep INT;
+    SELECT TOP 1 @hrrep = E.employee_ID FROM Employee E JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID WHERE ER.role_name LIKE 'HR_Representative%';
+
+    IF @meddoc IS NOT NULL
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@meddoc, @req_id, 'pending');
+
+    IF @hrrep IS NOT NULL
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@hrrep, @req_id, 'pending');
+END
+GO
+
+--2.5.L
+CREATE PROCEDURE Submit_unpaid
+    @employee_ID INT,
+    @start_date DATE,
+    @end_date DATE,
+    @document_description varchar(50),
+    @file_name varchar(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO [Leave] (date_of_request, start_date, end_date, final_approval_status)
+    VALUES (CAST(GETDATE() AS DATE), @start_date, @end_date, 'pending');
+
+    DECLARE @req_id INT = SCOPE_IDENTITY();
+
+    INSERT INTO Unpaid_Leave (request_ID, Emp_ID) VALUES (@req_id, @employee_ID);
+
+    IF @document_description IS NOT NULL
+    BEGIN
+        INSERT INTO Document (type, description, file_name, creation_date, status, emp_ID, unpaid_ID)
+        VALUES ('unpaid_memo', @document_description, @file_name, CAST(GETDATE() AS DATE), 'valid', @employee_ID, @req_id);
+    END
+
+    DECLARE @isHR BIT = 0;
+    IF EXISTS (SELECT 1 FROM Employee_Role WHERE emp_ID = @employee_ID AND role_name LIKE 'HR%')
+        SET @isHR = 1;
+
+    DECLARE @president INT;
+    SELECT TOP 1 @president = E.employee_ID FROM Employee E JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID WHERE ER.role_name = 'President';
+
+    IF @isHR = 1
+    BEGIN
+        DECLARE @hrMgr INT;
+        SELECT TOP 1 @hrMgr = E.employee_ID FROM Employee E JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID WHERE ER.role_name = 'HR Manager';
+
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@president, @req_id, 'pending');
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@hrMgr, @req_id, 'pending');
+    END
+    ELSE
+    BEGIN
+        DECLARE @hrRep INT;
+        SELECT TOP 1 @hrRep = E.employee_ID FROM Employee E JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID WHERE ER.role_name LIKE 'HR_Representative%';
+
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@president, @req_id, 'pending');
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@hrRep, @req_id, 'pending');
+    END
+END
+GO
+
+--2.5.M
+CREATE PROCEDURE Upperboard_approve_unpaids
+    @request_ID INT,
+    @Upperboard_ID INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM Document WHERE unpaid_ID = @request_ID)
+    BEGIN
+        UPDATE [Leave] SET final_approval_status = 'approved' WHERE request_ID = @request_ID;
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status)
+        VALUES (@Upperboard_ID, @request_ID, 'approved');
+    END
+    ELSE
+    BEGIN
+        UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status)
+        VALUES (@Upperboard_ID, @request_ID, 'rejected');
+    END
+END
+GO
+
+--2.5.N
+CREATE PROCEDURE Submit_compensation
+    @employee_ID INT,
+    @compensation_date DATE,
+    @reason varchar(50),
+    @date_of_original_workday DATE,
+    @replacement_emp INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT INTO [Leave] (date_of_request, start_date, end_date, final_approval_status)
+    VALUES (CAST(GETDATE() AS DATE), @compensation_date, @compensation_date, 'pending');
+
+    DECLARE @req_id INT = SCOPE_IDENTITY();
+
+    INSERT INTO Compensation_Leave (request_ID, reason, date_of_original_workday, emp_ID, replacement_emp)
+    VALUES (@req_id, @reason, @date_of_original_workday, @employee_ID, @replacement_emp);
+
+    DECLARE @hrrep INT;
+    SELECT TOP 1 @hrrep = E.employee_ID
+    FROM Employee E
+    JOIN Employee_Role ER ON ER.emp_ID = E.employee_ID
+    WHERE ER.role_name LIKE 'HR_Representative%';
+
+    IF @hrrep IS NOT NULL
+        INSERT INTO Employee_Approve_Leave (Emp1_ID, Leave_ID, status) VALUES(@hrrep, @req_id, 'pending');
+END
+GO
+
+--2.5.O
+CREATE PROCEDURE Dean_andHR_Evaluation
+    @employee_ID INT,
+    @rating INT,
+    @comment varchar(50),
+    @semester char(3)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT INTO Performance (rating, comments, semester, emp_ID)
+    VALUES (@rating, @comment, @semester, @employee_ID);
+END
+GO
