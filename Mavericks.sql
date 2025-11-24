@@ -28,8 +28,7 @@ create table Employee(
 	emergency_contact_phone char (11), 
 	annual_balance int, 
 	accidental_balance int, 
-	salary decimal(10,2), -- I do not know how should this be calculated
-	hire_date date, 
+	salary as calculate_salary(employee_ID),
 	last_working_date date, 
 	dept_name varchar (50),
 	constraint PK_employee Primary key(employee_ID),
@@ -218,6 +217,36 @@ end
 GO
 
 Exec createAllTables;
+
+go
+CREATE FUNCTION calculate_salary(@emp_ID INT)
+RETURNS DECIMAL(10,2)
+AS
+BEGIN
+    DECLARE 
+        @base_sal DECIMAL(10,2),
+        @yoe_percentage DECIMAL(4,2),
+        @yoe INT,
+        @res DECIMAL(10,2);
+
+
+    SELECT TOP 1
+        @base_sal = R.base_salary,
+        @yoe_percentage = R.percentage_YOE,
+        @yoe = E.years_of_experience
+    FROM Employee E
+    JOIN Employee_Role ER ON E.employee_ID = ER.emp_ID
+    JOIN Role R ON R.role_name = ER.role_name
+    WHERE E.employee_ID = @emp_ID
+    ORDER BY R.rank ASC;  
+
+
+    SET @res = @base_sal + (@base_sal * @yoe_percentage * @yoe);
+
+    RETURN @res;
+END
+GO
+
 
 GO
 create procedure dropAllTables
@@ -439,7 +468,7 @@ select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on
 where a.date = cast(current_Timestamp -1 as date)
 GO
 
-
+GO
 --2.3.C
 CREATE PROCEDURE Update_Employment_Status (
 @employee_ID INT
@@ -478,6 +507,7 @@ DECLARE @isValid BIT;
 if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
 	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
 	and  D.name= 'HR')
+	begin
 	set @isValid = 1
 end
 else 
@@ -538,7 +568,6 @@ GO
 create procedure HR_approval_unpaid @request_ID int, @HR_ID int
 as
 begin
-	
 	update Leave 
 		 SET final_approval_status = 
 					CASE 
