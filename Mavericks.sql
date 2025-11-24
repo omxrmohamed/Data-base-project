@@ -19,7 +19,7 @@ create table Employee(
 	password varchar (50), 
 	address varchar (50), 
 	gender char (1), 
-	official_day_off varchar (50), -- should we check if it is a week day?
+	official_day_off varchar (50), 
 	years_of_experience int, 
 	national_ID char (16),
 	employment_status varchar (50), 
@@ -441,19 +441,28 @@ GO
 
 -- 2.4.A
 GO
-create procedure HRLoginValidation @employee_ID int, @password varchar(50), @isValid BIT OUTPUT
-as
-begin 
+create function HRLoginValidation (@employee_ID int, @password varchar(50))
+returns bit
+as 
+begin
+DECLARE @isValid BIT;
 if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
-	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@employee_ID
 	and  D.name= 'HR department')
+begin
 	set @isValid = 1
+end
 else 
+begin
 	set @isValid = 0
 end
-go
+return @isValid
+end
+GO
+
+
 -- 2.4.B
-go
+GO
 create procedure  HR_approval_an_acc @request_ID int, @HR_ID int
 as
 begin 
@@ -493,10 +502,11 @@ begin
 					where employee_ID = (select emp_ID from Annual_Leave where request_ID = @request_ID);
 				end
 end
-go
+GO
+
 
 --2.4.C
-go
+GO
 create procedure HR_approval_unpaid @request_ID int, @HR_ID int
 as
 begin
@@ -510,23 +520,38 @@ begin
 					END
 		where request_ID = @request_ID
 end
-go
+GO
+
+
 --2.4.D
 GO
-create or alter procedure HR_approval_comp @request_ID int, @HR_ID int -- how to do it
+create or alter procedure HR_approval_comp @request_ID int, @HR_ID int 
 as 
 begin 
-UPDATE Leave
-	SET final_approval_status = 
-		CASE 
-			WHEN final_approval_status = 'approved' THEN 'rejected'
-			WHEN final_approval_status = 'rejected' THEN 'approved'
-			ELSE 'approved'
-		END
-	WHERE request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-	and  D.name= 'HR department' )
+update l 
+set l.final_approval_status= 
+case 
+when cl.reason is null or cl.replacement_emp is null then 'rejected'
+when (month(l.date_of_request) <> month(cl.date_of_original_workday)) or (year(l.date_of_request) <> year(cl.date_of_original_workday)) then 'rejected'
+when EXISTS (
+                SELECT 1 
+                FROM Employee_Approve_Leave eal
+                WHERE eal.Leave_ID = @request_ID
+                  AND status = 'rejected'
+            ) THEN 'rejected'
+when E.official_day_off <> DATENAME(WEEKDAY, cl.date_of_original_workday) or 
+( E.official_day_off = DATENAME(WEEKDAY, cl.date_of_original_workday) and A.total_duration<8) then 'rejected'  
+else 'approved'
+end
+from (Leave l join Compensation_Leave cl on l.request_ID= cl.request_ID) inner join Employee E on E.employee_ID = cl.emp_ID
+inner join Attendance A on A.emp_ID = cl.emp_ID and A.date = cl.date_of_original_workday
+where cl.request_ID = @request_ID and  l.final_approval_status ='pending' 
+and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR department')
 end
 GO
+
+
+
 
 --2.5.A
 GO
@@ -554,6 +579,7 @@ BEGIN
 	RETURN @isValid;
 END
 GO
+
 
 --2.5.B
 GO
