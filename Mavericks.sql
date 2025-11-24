@@ -1,6 +1,7 @@
 ﻿create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
 drop database University_HR_ManagementSystem_90;
+
 GO
 create procedure createAllTables
 as 
@@ -29,6 +30,7 @@ create table Employee(
 	annual_balance int, 
 	accidental_balance int, 
 	salary as calculate_salary(employee_ID),
+	hire_date date,
 	last_working_date date, 
 	dept_name varchar (50),
 	constraint PK_employee Primary key(employee_ID),
@@ -507,7 +509,7 @@ DECLARE @isValid BIT;
 if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
 	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
 	and  D.name= 'HR')
-	begin
+begin
 	set @isValid = 1
 end
 else 
@@ -603,11 +605,9 @@ end
 from (Leave l join Compensation_Leave cl on l.request_ID= cl.request_ID) inner join Employee E on E.employee_ID = cl.emp_ID
 inner join Attendance A on A.emp_ID = cl.emp_ID and A.date = cl.date_of_original_workday
 where cl.request_ID = @request_ID and  l.final_approval_status ='pending' 
-and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR department')
+and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR')
 end
 GO
-
-
 
 
 --2.5.A
@@ -684,6 +684,26 @@ BEGIN
     VALUES (@employee_ID, @date, @amount, 'missing_hours', 'pending', NULL, @attendance_id);
 END
 GO
+
+--2.4.F
+GO
+create or alter procedure Deduction_days @employee_ID int
+as 
+begin
+declare @salary decimal(10,2), @rateperday decimal(10,2)
+
+select @salary = E.salary from Employee E where E.employee_ID = @employee_ID 
+set @rateperday = (@salary / 22.0)
+insert into Deduction (emp_ID, date, amount, type, status, attendance_ID)
+(
+ SELECT
+ A.emp_id, A.date, @rateperday, 'missing_days', 'pending', A.attendance_ID
+ from Attendance A where A.emp_ID = @employee_ID and A.status = 'absent' and not exists (select 1 from Deduction D where A.attendance_ID = D.attendance_ID)
+ );
+ end 
+GO
+
+
 --2.4.G
 CREATE PROCEDURE Deduction_unpaid
     @employee_ID int
@@ -844,7 +864,7 @@ RETURN
    
     AND MONTH(A.date) = MONTH(GETDATE())
 	AND YEAR(A.date) = YEAR(GETDATE())
-    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
+    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
 )
 GO
 
@@ -908,5 +928,3 @@ RETURN @IsOnLeave;
 END
 GO
 go
-
-
