@@ -6,7 +6,7 @@ create procedure createAllTables
 as 
 begin
 create table Department(
-	name varchar(50)  , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
+	name varchar(50) ,
 	building_location varchar(50),
 	check(name in ('MET', 'IET', 'BI','HR', 'Medical')),
 	constraint PK_DPT primary key (name)
@@ -28,7 +28,7 @@ create table Employee(
 	emergency_contact_phone char (11), 
 	annual_balance int, 
 	accidental_balance int, 
-	salary decimal(10,2), -- I do not know how should this be calculated
+	salary decimal(10,2),
 	hire_date date, 
 	last_working_date date, 
 	dept_name varchar (50),
@@ -46,7 +46,7 @@ create table Employee_Phone(
 	constraint FK_phone_employee foreign key (emp_ID) references Employee(employee_ID)
 );
 create table Role (
-	role_name varchar (50) not null, -- what about the HR representative format?
+	role_name varchar (50) not null,
 	title varchar (50),
 	description varchar (50), 
 	rank int, 
@@ -210,7 +210,7 @@ create table Employee_Replace_Employee (
 create table Employee_Approve_Leave (
 	Emp1_ID int , 
 	Leave_ID int ,
-	status varchar (50), -- should we check anything about this?
+	status varchar (50), 
 	constraint PK_App_Leave primary key (Emp1_ID, Leave_ID),
 	constraint FK_Employee1_App_leave foreign key (Emp1_ID) references Employee(employee_ID)	
 );
@@ -478,6 +478,7 @@ DECLARE @isValid BIT;
 if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
 	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
 	and  D.name= 'HR')
+begin
 	set @isValid = 1
 end
 else 
@@ -574,11 +575,28 @@ end
 from (Leave l join Compensation_Leave cl on l.request_ID= cl.request_ID) inner join Employee E on E.employee_ID = cl.emp_ID
 inner join Attendance A on A.emp_ID = cl.emp_ID and A.date = cl.date_of_original_workday
 where cl.request_ID = @request_ID and  l.final_approval_status ='pending' 
-and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR department')
+and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR')
 end
 GO
 
 
+--2.4.F
+GO
+create or alter procedure Deduction_days @employee_ID int
+as 
+begin
+declare @salary decimal(10,2), @rateperday decimal(10,2)
+
+select @salary = E.salary from Employee E where E.employee_ID = @employee_ID 
+set @rateperday = (@salary / 22.0)
+insert into Deduction (emp_ID, date, amount, type, status, attendance_ID)
+(
+ SELECT
+ A.emp_id, A.date, @rateperday, 'missing_days', 'pending', A.attendance_ID
+ from Attendance A where A.emp_ID = @employee_ID and A.status = 'absent' and not exists (select 1 from Deduction D where A.attendance_ID = D.attendance_ID)
+ );
+ end 
+ GO
 
 
 --2.5.A
@@ -878,6 +896,5 @@ END
 RETURN @IsOnLeave;
 END
 GO
-go
 
 
