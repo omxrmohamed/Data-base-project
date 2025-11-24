@@ -1,12 +1,13 @@
 ﻿create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
 drop database University_HR_ManagementSystem_90;
+
 GO
 create procedure createAllTables
 as 
 begin
 create table Department(
-	name varchar(50) ,
+	name varchar(50)  , -- should we check if it is in MET, IET,.....? If so should we do it for all of the departments in the uni?
 	building_location varchar(50),
 	check(name in ('MET', 'IET', 'BI','HR', 'Medical')),
 	constraint PK_DPT primary key (name)
@@ -28,8 +29,8 @@ create table Employee(
 	emergency_contact_phone char (11), 
 	annual_balance int, 
 	accidental_balance int, 
-	salary decimal(10,2),
-	hire_date date, 
+	salary as calculate_salary(employee_ID),
+	hire_date date,
 	last_working_date date, 
 	dept_name varchar (50),
 	constraint PK_employee Primary key(employee_ID),
@@ -46,7 +47,7 @@ create table Employee_Phone(
 	constraint FK_phone_employee foreign key (emp_ID) references Employee(employee_ID)
 );
 create table Role (
-	role_name varchar (50) not null,
+	role_name varchar (50) not null, -- what about the HR representative format?
 	title varchar (50),
 	description varchar (50), 
 	rank int, 
@@ -210,7 +211,7 @@ create table Employee_Replace_Employee (
 create table Employee_Approve_Leave (
 	Emp1_ID int , 
 	Leave_ID int ,
-	status varchar (50), 
+	status varchar (50), -- should we check anything about this?
 	constraint PK_App_Leave primary key (Emp1_ID, Leave_ID),
 	constraint FK_Employee1_App_leave foreign key (Emp1_ID) references Employee(employee_ID)	
 );
@@ -218,6 +219,36 @@ end
 GO
 
 Exec createAllTables;
+
+go
+CREATE FUNCTION calculate_salary(@emp_ID INT)
+RETURNS DECIMAL(10,2)
+AS
+BEGIN
+    DECLARE 
+        @base_sal DECIMAL(10,2),
+        @yoe_percentage DECIMAL(4,2),
+        @yoe INT,
+        @res DECIMAL(10,2);
+
+
+    SELECT TOP 1
+        @base_sal = R.base_salary,
+        @yoe_percentage = R.percentage_YOE,
+        @yoe = E.years_of_experience
+    FROM Employee E
+    JOIN Employee_Role ER ON E.employee_ID = ER.emp_ID
+    JOIN Role R ON R.role_name = ER.role_name
+    WHERE E.employee_ID = @emp_ID
+    ORDER BY R.rank ASC;  
+
+
+    SET @res = @base_sal + (@base_sal * @yoe_percentage * @yoe);
+
+    RETURN @res;
+END
+GO
+
 
 GO
 create procedure dropAllTables
@@ -439,7 +470,7 @@ select a.*, e.first_name, e.last_name from Attendance a inner join Employee e on
 where a.date = cast(current_Timestamp -1 as date)
 GO
 
-
+GO
 --2.3.C
 CREATE PROCEDURE Update_Employment_Status (
 @employee_ID INT
@@ -539,7 +570,6 @@ GO
 create procedure HR_approval_unpaid @request_ID int, @HR_ID int
 as
 begin
-	
 	update Leave 
 		 SET final_approval_status = 
 					CASE 
@@ -578,25 +608,6 @@ where cl.request_ID = @request_ID and  l.final_approval_status ='pending'
 and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR')
 end
 GO
-
-
---2.4.F
-GO
-create or alter procedure Deduction_days @employee_ID int
-as 
-begin
-declare @salary decimal(10,2), @rateperday decimal(10,2)
-
-select @salary = E.salary from Employee E where E.employee_ID = @employee_ID 
-set @rateperday = (@salary / 22.0)
-insert into Deduction (emp_ID, date, amount, type, status, attendance_ID)
-(
- SELECT
- A.emp_id, A.date, @rateperday, 'missing_days', 'pending', A.attendance_ID
- from Attendance A where A.emp_ID = @employee_ID and A.status = 'absent' and not exists (select 1 from Deduction D where A.attendance_ID = D.attendance_ID)
- );
- end 
- GO
 
 
 --2.5.A
@@ -673,6 +684,26 @@ BEGIN
     VALUES (@employee_ID, @date, @amount, 'missing_hours', 'pending', NULL, @attendance_id);
 END
 GO
+
+--2.4.F
+GO
+create or alter procedure Deduction_days @employee_ID int
+as 
+begin
+declare @salary decimal(10,2), @rateperday decimal(10,2)
+
+select @salary = E.salary from Employee E where E.employee_ID = @employee_ID 
+set @rateperday = (@salary / 22.0)
+insert into Deduction (emp_ID, date, amount, type, status, attendance_ID)
+(
+ SELECT
+ A.emp_id, A.date, @rateperday, 'missing_days', 'pending', A.attendance_ID
+ from Attendance A where A.emp_ID = @employee_ID and A.status = 'absent' and not exists (select 1 from Deduction D where A.attendance_ID = D.attendance_ID)
+ );
+ end 
+GO
+
+
 --2.4.G
 CREATE PROCEDURE Deduction_unpaid
     @employee_ID int
@@ -833,7 +864,7 @@ RETURN
    
     AND MONTH(A.date) = MONTH(GETDATE())
 	AND YEAR(A.date) = YEAR(GETDATE())
-    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
+    AND NOT (DATENAME(weekday, A.date) = E.official_day_off AND A.status = 'Absent')
 )
 GO
 
@@ -896,5 +927,4 @@ END
 RETURN @IsOnLeave;
 END
 GO
-
-
+go
