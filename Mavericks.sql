@@ -528,6 +528,139 @@ UPDATE Leave
 end
 GO
 
+--2.4.G
+CREATE PROCEDURE Deduction_unpaid
+    @employee_ID int
+AS
+BEGIN
+    DECLARE @daily_rate decimal(10,2); -- This is an assumption that daily rate is calculated same as rate per hour in 1.3 I couldn't find anywhere how to calculate day rate or missing day rate 
+	SELECT @daily_rate = (salary / 22.0)
+    FROM Employee 
+    WHERE employee_ID = @employee_ID;
+
+    INSERT INTO Deduction (emp_ID, date, amount, type, status, unpaid_ID)
+    SELECT 
+        @employee_ID,
+        CASE 
+            WHEN MONTH(L.start_date) != MONTH(L.end_date) THEN EOMONTH(L.start_date)
+            ELSE L.end_date 
+        END,
+        (DATEDIFF(day, L.start_date, 
+            CASE 
+                WHEN MONTH(L.start_date) != MONTH(L.end_date) THEN EOMONTH(L.start_date)
+                ELSE L.end_date 
+            END
+        ) + 1) * @daily_rate,
+        'unpaid', 
+        'pending', 
+        L.request_ID
+    FROM Unpaid_Leave UL
+    INNER JOIN Leave L ON UL.request_ID = L.request_ID
+    WHERE UL.Emp_ID = @employee_ID
+      AND L.final_approval_status = 'approved' AND L.request_ID NOT IN (SELECT ISNULL(unpaid_ID, 0) FROM Deduction)
+    UNION ALL
+    SELECT 
+        @employee_ID,
+        L.end_date,
+        (DATEDIFF(day, DATEADD(day, 1, EOMONTH(L.start_date)), L.end_date) + 1) * @daily_rate,
+        'unpaid', 
+        'pending', 
+        L.request_ID
+    FROM Unpaid_Leave UL
+    INNER JOIN Leave L ON UL.request_ID = L.request_ID
+    WHERE UL.Emp_ID = @employee_ID
+      AND L.final_approval_status = 'approved'
+      AND MONTH(L.start_date) != MONTH(L.end_date) 
+      AND L.request_ID NOT IN (SELECT ISNULL(unpaid_ID, 0) FROM Deduction);
+END
+GO
+
+--2.4.H
+CREATE FUNCTION Bonus_amount (@employee_ID int)
+RETURNS decimal(10,2)
+AS
+BEGIN
+    DECLARE @bonus decimal(10,2) = 0;
+    DECLARE @salary decimal(10,2);
+    DECLARE @overtime_factor decimal(4,2);
+    DECLARE @hourly_rate decimal(10,2);
+    DECLARE @total_extra_hours int; 
+
+    SELECT 
+        @salary = E.salary,
+        @overtime_factor = R.percentage_overtime
+    FROM Employee E
+    INNER JOIN Employee_Role ER ON E.employee_ID = ER.emp_ID
+    INNER JOIN Role R ON ER.role_name = R.role_name
+    WHERE E.employee_ID = @employee_ID;
+
+    IF @salary IS NULL RETURN 0;
+
+    SET @hourly_rate = (@salary / 22.0) / 8.0;
+
+    SELECT @total_extra_hours = SUM(total_duration - 8)
+    FROM Attendance
+    WHERE emp_ID = @employee_ID
+      AND total_duration > 8
+      AND status = 'attended';
+
+    SET @bonus = @hourly_rate * ((@overtime_factor * @total_extra_hours) / 100.0);
+
+    RETURN @bonus;
+END
+GO
+
+--2.4.I
+CREATE PROCEDURE Add_Payroll
+    @employee_ID int,
+    @from_date date,
+    @to_date date
+AS
+BEGIN
+	DECLARE @base_salary decimal(10,2)= 0;
+    DECLARE @bonus_val decimal(10,2)= 0;
+    DECLARE @deduction_val decimal(10,2)= 0;
+    DECLARE @final_salary decimal(10,1)= 0;
+
+	SELECT @base_salary = salary 
+	FROM Employee 
+	WHERE employee_ID = @employee_ID;
+
+	SET @bonus_val = dbo.Bonus_amount(@employee_ID);
+
+	SELECT @deduction_val = SUM(amount)
+	FROM Deduction
+	WHERE emp_ID = @employee_ID AND (date BETWEEN @from_date AND @to_date) AND status = 'pending';
+
+	UPDATE Deduction
+        SET status = 'finalized'
+        WHERE emp_ID = @employee_ID AND (date BETWEEN @from_date AND @to_date) AND status = 'pending';
+	
+	SET @final_salary = (@base_salary + @bonus_val) - @deduction_val;
+
+	INSERT INTO Payroll (
+            payment_date, 
+            final_salary_amount, 
+            from_date, 
+            to_date, 
+            comments, 
+            bonus_amount, 
+            deductions_amount, 
+            emp_ID)
+	VALUES (
+            GETDATE(),
+            @final_salary, 
+            @from_date, 
+            @to_date, 
+            'Monthly Salary Generated', 
+            @bonus_val, 
+            @deduction_val, 
+            @employee_ID
+        );
+	END
+GO
+	
+
 --2.5.B
 GO
 create function MyPerformance (@employee_ID int, @semester char(3))
