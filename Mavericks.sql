@@ -800,7 +800,11 @@ BEGIN
     FROM Unpaid_Leave UL
     INNER JOIN Leave L ON UL.request_ID = L.request_ID
     WHERE UL.Emp_ID = @employee_ID
-      AND L.final_approval_status = 'approved' AND L.request_ID NOT IN (SELECT ISNULL(unpaid_ID, 0) FROM Deduction)
+      AND L.final_approval_status = 'approved' AND  NOT EXISTS (
+          SELECT 1 FROM Deduction D 
+          WHERE D.unpaid_ID = L.request_ID 
+          AND MONTH(D.date) = MONTH(L.start_date)
+      )
     UNION ALL
     SELECT 
         @employee_ID,
@@ -814,10 +818,13 @@ BEGIN
     WHERE UL.Emp_ID = @employee_ID
       AND L.final_approval_status = 'approved'
       AND MONTH(L.start_date) != MONTH(L.end_date) 
-      AND L.request_ID NOT IN (SELECT ISNULL(unpaid_ID, 0) FROM Deduction);
+      AND NOT EXISTS (
+          SELECT 1 FROM Deduction D 
+          WHERE D.unpaid_ID = L.request_ID 
+          AND MONTH(D.date) = MONTH(L.end_date)
+      );
 END
 GO
-
 --2.4.H
 CREATE FUNCTION Bonus_amount (@employee_ID int)
 RETURNS decimal(10,2)
