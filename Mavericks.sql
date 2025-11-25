@@ -279,6 +279,64 @@ GO
 
 Exec dropAllTables;
 
+
+GO
+CREATE PROCEDURE dropAllProceduresFunctionsViews
+AS
+BEGIN
+    -- 1. DROP PROCEDURES    
+    DROP PROCEDURE IF EXISTS createAllTables;
+    DROP PROCEDURE IF EXISTS dropAllTables;
+    DROP PROCEDURE IF EXISTS clearAllTables;
+    DROP PROCEDURE IF EXISTS allEmployeeProfiles;
+    DROP PROCEDURE IF EXISTS Update_Status_Doc;
+    DROP PROCEDURE IF EXISTS Remove_Deductions;
+    DROP PROCEDURE IF EXISTS Intitiate_Attendance;
+    DROP PROCEDURE IF EXISTS Update_Attendance;
+    DROP PROCEDURE IF EXISTS Remove_DayOff;
+    DROP PROCEDURE IF EXISTS Remove_Approved_Leaves;
+    DROP PROCEDURE IF EXISTS Replace_employee;
+    DROP PROCEDURE IF EXISTS Create_Holiday;
+    DROP PROCEDURE IF EXISTS Add_Holiday;
+    DROP PROCEDURE IF EXISTS Remove_Holiday;
+    DROP PROCEDURE IF EXISTS Update_Employment_Status;
+    DROP PROCEDURE IF EXISTS HR_approval_an_acc;
+    DROP PROCEDURE IF EXISTS HR_approval_unpaid;
+    DROP PROCEDURE IF EXISTS HR_approval_comp;
+    DROP PROCEDURE IF EXISTS Deduction_hours;
+    DROP PROCEDURE IF EXISTS Deduction_days;
+    DROP PROCEDURE IF EXISTS Deduction_unpaid;
+    DROP PROCEDURE IF EXISTS Add_Payroll;
+    DROP PROCEDURE IF EXISTS Submit_annual;
+    DROP PROCEDURE IF EXISTS Upperboard_approve_annual;
+    DROP PROCEDURE IF EXISTS Submit_accidental;
+    DROP PROCEDURE IF EXISTS Submit_medical;
+    DROP PROCEDURE IF EXISTS Submit_unpaid;
+    DROP PROCEDURE IF EXISTS Upperboard_approve_unpaids;
+    DROP PROCEDURE IF EXISTS Submit_compensation;
+    DROP PROCEDURE IF EXISTS Dean_andHR_Evaluation;
+    -- 2. DROP VIEWS
+    DROP VIEW IF EXISTS NoEmployeeDept;
+    DROP VIEW IF EXISTS allPerformance;
+    DROP VIEW IF EXISTS allRejectedMedicals;
+    DROP VIEW IF EXISTS allEmployeeAttendance;
+    -- 3. DROP FUNCTIONS
+    DROP FUNCTION IF EXISTS calculate_salary;
+    DROP FUNCTION IF EXISTS HRLoginValidation;
+    DROP FUNCTION IF EXISTS EmployeeLoginValidation;
+    DROP FUNCTION IF EXISTS Bonus_amount;
+    DROP FUNCTION IF EXISTS MyPerformance;
+    DROP FUNCTION IF EXISTS MyAttendance;
+    DROP FUNCTION IF EXISTS Last_month_payroll;
+    DROP FUNCTION IF EXISTS Deductions_Attendance;
+    DROP FUNCTION IF EXISTS Is_On_Leave;
+    DROP FUNCTION IF EXISTS Status_leaves;
+
+END
+GO
+
+exec dropAllProceduresFunctionsViews
+
 GO
 create procedure allEmployeeProfiles
 as
@@ -570,14 +628,23 @@ GO
 create procedure HR_approval_unpaid @request_ID int, @HR_ID int
 as
 begin
-	update Leave 
-		 SET final_approval_status = 
+	update l 
+		 SET l.final_approval_status = 
 					CASE 
-						WHEN final_approval_status = 'approved' THEN 'rejected'
-						WHEN final_approval_status = 'rejected' THEN 'approved'
-						ELSE 'approved'
+						when e.type_of_contract <> 'full_time' then 'rejected'
+                        when l.num_days>30 then 'rejected'
+                        when EXISTS (
+                    SELECT 1 
+                    FROM Employee_Approve_Leave 
+                    WHERE Leave_ID = @request_ID AND status = 'rejected'
+                                     ) THEN 'rejected'
+                    when exists ( select 1 from Leave where l.final_approval_status = 'approved' 
+                    and year(l.date_of_request) = year(l.start_date) and l.request_ID = @request_ID) then 'rejected'
+                      
 					END
-		where request_ID = @request_ID
+        from Leave l join Unpaid_Leave ul on l.request_ID = ul.Emp_ID inner join Employee e on e.employee_ID = ul.Emp_ID
+		where request_ID = @request_ID and l.final_approval_status ='pending' 
+        and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR')
 end
 GO
 
@@ -733,7 +800,11 @@ BEGIN
     FROM Unpaid_Leave UL
     INNER JOIN Leave L ON UL.request_ID = L.request_ID
     WHERE UL.Emp_ID = @employee_ID
-      AND L.final_approval_status = 'approved' AND L.request_ID NOT IN (SELECT ISNULL(unpaid_ID, 0) FROM Deduction)
+      AND L.final_approval_status = 'approved' AND  NOT EXISTS (
+          SELECT 1 FROM Deduction D 
+          WHERE D.unpaid_ID = L.request_ID 
+          AND MONTH(D.date) = MONTH(L.start_date)
+      )
     UNION ALL
     SELECT 
         @employee_ID,
@@ -747,10 +818,13 @@ BEGIN
     WHERE UL.Emp_ID = @employee_ID
       AND L.final_approval_status = 'approved'
       AND MONTH(L.start_date) != MONTH(L.end_date) 
-      AND L.request_ID NOT IN (SELECT ISNULL(unpaid_ID, 0) FROM Deduction);
+      AND NOT EXISTS (
+          SELECT 1 FROM Deduction D 
+          WHERE D.unpaid_ID = L.request_ID 
+          AND MONTH(D.date) = MONTH(L.end_date)
+      );
 END
 GO
-
 --2.4.H
 CREATE FUNCTION Bonus_amount (@employee_ID int)
 RETURNS decimal(10,2)
