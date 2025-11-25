@@ -400,6 +400,8 @@ exec update_Status_Doc
 
 --2.3.B
 GO
+
+--2.3.B
 create procedure Remove_Deductions
 as 
 begin
@@ -440,10 +442,20 @@ CREATE PROCEDURE Update_Attendance @Employee_id int, @check_in time, @check_out 
 GO
 
 --2.3.I
-CREATE PROCEDURE Remove_DayOff @Employee_id int AS -- should we check if the attendance status is 'Absent'?
-with tmp as (select emp_ID, official_day_off from Employee where emp_ID = @Employee_id)
-Delete from Attendance
-where emp_ID = @Employee_id and tmp.employee_ID = @Employee_id and DATENAME(WEEKDAY, date) = tmp.official_day_off;
+CREATE PROCEDURE Remove_DayOff 
+    @Employee_id INT
+AS
+BEGIN
+    ;WITH tmp AS (
+        SELECT employee_ID, official_day_off
+        FROM Employee
+        WHERE employee_ID = @Employee_id
+    )
+    DELETE A
+    FROM Attendance A
+    INNER JOIN tmp T ON A.emp_ID = T.employee_ID
+    WHERE DATENAME(WEEKDAY, A.date) = T.official_day_off;
+END
 GO
 
 --2.3.J
@@ -513,6 +525,8 @@ exec Add_Holiday
 
 --2.3.H
 GO
+
+--2.3.H
 create procedure Remove_Holiday
 as
 begin
@@ -566,8 +580,8 @@ returns bit
 as 
 begin
 DECLARE @isValid BIT;
-if exists( select * from Employee  where employee_ID = @employee_ID and password = @password) and 
-	exists(select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
+if exists( select 1 from Employee  where employee_ID = @employee_ID and password = @password) and 
+	exists(select 1 from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@employee_ID
 	and  D.name= 'HR')
 begin
 	set @isValid = 1
