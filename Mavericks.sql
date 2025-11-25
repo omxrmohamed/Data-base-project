@@ -628,10 +628,12 @@ GO
 create procedure HR_approval_unpaid @request_ID int, @HR_ID int
 as
 begin
-	update l 
-		 SET l.final_approval_status = 
-					CASE 
-						when e.type_of_contract <> 'full_time' then 'rejected'
+
+
+    update l 
+         SET l.final_approval_status = 
+                    CASE 
+                        when e.type_of_contract <> 'full_time' then 'rejected'
                         when l.num_days>30 then 'rejected'
                         when EXISTS (
                     SELECT 1 
@@ -640,10 +642,62 @@ begin
                                      ) THEN 'rejected'
                     when exists ( select 1 from Leave where l.final_approval_status = 'approved' 
                     and year(l.date_of_request) = year(l.start_date) and l.request_ID = @request_ID) then 'rejected'
-                      
-					END
-        from Leave l join Unpaid_Leave ul on l.request_ID = ul.Emp_ID inner join Employee e on e.employee_ID = ul.Emp_ID
-		where request_ID = @request_ID and l.final_approval_status ='pending' 
+
+                    when exists (
+                        select *
+                        from Role r inner join Employee_role ER on r.role_name = ER.role_name
+                        inner join employee e2 on e2.employee_ID = ER.emp_ID
+                        where e2.employee_ID = ul.emp_ID and r.role_name = 'Dean'
+                    ) and exists (
+                        select *
+                        from Employee e3 inner join Employee_role ER2 on e3.employee_ID = ER2.emp_ID
+                        where e3.dept_name = e.dept_name and ER2.role_name = 'Vice Dean' and e3.employment_status = 'onleave'
+                    ) then 'rejected'
+
+                   when exists (
+                        select *
+                        from Role r inner join Employee_role ER on r.role_name = ER.role_name
+                        inner join employee e2 on e2.employee_ID = ER.emp_ID
+                        where e2.employee_ID = ul.emp_ID and r.role_name = 'Vice Dean'
+                    ) and exists (
+                        select *
+                        from Employee e3 inner join Employee_role ER2 on e3.employee_ID = ER2.emp_ID
+                        where e3.dept_name = e.dept_name and ER2.role_name = 'Dean' and e3.employment_status = 'onleave'
+                    ) then 'rejected'
+
+                    when exists (
+                        select *
+                        from Role r inner join Employee_role ER on r.role_name = ER.role_name
+                        inner join employee e2 on e2.employee_ID = ER.emp_ID
+                        where e2.employee_ID = ul.emp_ID and r.role_name in ( 'Vice Dean', 'Dean')
+                    )  and not exists (
+                        select * 
+                        from Employee_Approve_Leave EAL inner join Employee_Role ER2 on ER2.emp_ID = EAL.Emp1_ID
+                        inner join role r2 on r2.role_name = er2.role_name 
+                        where ul.request_ID = eal.Leave_ID and EAL.status = 'approved' and er2.role_name = 'President'
+                    ) then 'rejected' 
+
+                    when exists (
+                        select * 
+                        from Employee E2 inner join Employee_Role ER on ER.emp_ID = E2.employee_ID 
+                        inner join Role r on r.role_name = ER.role_name 
+                        where ER.role_name = 'HR' and E2.employee_ID = ul.Emp_ID
+                    ) and not exists (
+                        select * 
+                        from Employee_Approve_Leave EAL inner join Employee_Role ER2 on ER2.emp_ID = EAL.Emp1_ID
+                        inner join role r2 on r2.role_name = er2.role_name 
+                        where ul.request_ID = eal.Leave_ID and EAL.status = 'approved' and er2.role_name = 'President'
+                    )and not exists (
+                        select * 
+                        from Employee_Approve_Leave EAL inner join Employee_Role ER2 on ER2.emp_ID = EAL.Emp1_ID
+                        inner join role r2 on r2.role_name = er2.role_name 
+                        where ul.request_ID = eal.Leave_ID and EAL.status = 'approved' and er2.role_name = 'HR Manager'
+                    ) then 'rejected'
+
+                    else 'approved'
+                    END
+        from Leave l join Unpaid_Leave ul on l.request_ID = ul.request_ID inner join Employee e on e.employee_ID = ul.Emp_ID
+        where l.request_ID = @request_ID and l.final_approval_status ='pending' 
         and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR')
 end
 GO
@@ -666,11 +720,11 @@ when EXISTS (
                   AND status = 'rejected'
             ) THEN 'rejected'
 when E.official_day_off <> DATENAME(WEEKDAY, cl.date_of_original_workday) or 
-( E.official_day_off = DATENAME(WEEKDAY, cl.date_of_original_workday) and A.total_duration<8) then 'rejected'  
+( E.official_day_off = DATENAME(WEEKDAY, cl.date_of_original_workday) and isnull(A.total_duration,0)<8) then 'rejected'  
 else 'approved'
 end
 from (Leave l join Compensation_Leave cl on l.request_ID= cl.request_ID) inner join Employee E on E.employee_ID = cl.emp_ID
-inner join Attendance A on A.emp_ID = cl.emp_ID and A.date = cl.date_of_original_workday
+left join Attendance A on A.emp_ID = cl.emp_ID and A.date = cl.date_of_original_workday
 where cl.request_ID = @request_ID and  l.final_approval_status ='pending' 
 and exists (select 1 from Employee e where e.employee_ID= @HR_ID and e.dept_name = 'HR')
 end
@@ -704,51 +758,64 @@ BEGIN
 END
 GO
 
+
 --2.4.E
-CREATE PROCEDURE Deduction_hours
+CREATE OR ALTER PROCEDURE Deduction_hours
     @employee_ID INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @attendance_id INT,
-            @date DATE,
-            @hours INT,
-            @missing_hours INT,
-            @salary DECIMAL(10,2),
-            @rate_per_hour DECIMAL(10,4),
-            @amount DECIMAL(10,2);
+    DECLARE @CurrentMonth INT = MONTH(GETDATE());
+    DECLARE @CurrentYear INT = YEAR(GETDATE());
+    DECLARE @TotalWorkedHours INT;
+    DECLARE @AttendedDaysCount INT;
+    DECLARE @TotalExpectedHours INT;
+    DECLARE @MissingHours INT;
+    DECLARE @HourlyRate DECIMAL(10,2);
+    DECLARE @Amount DECIMAL(10,2);
 
-    SELECT TOP 1
-        @attendance_id = attendance_ID,
-        @date = date,
-        @hours = total_duration
+    SELECT 
+        @TotalWorkedHours = SUM(ISNULL(total_duration, 0)),
+        @AttendedDaysCount = COUNT(attendance_ID)
     FROM Attendance
     WHERE emp_ID = @employee_ID
-      AND status = 'attended'            
-      AND total_duration < 8              
-      AND total_duration IS NOT NULL
-      AND MONTH(date) = MONTH(GETDATE())
-      AND YEAR(date) = YEAR(GETDATE())
-    ORDER BY date ASC;                   
+      AND status = 'attended'
+      AND MONTH(date) = @CurrentMonth
+      AND YEAR(date) = @CurrentYear;
 
-
-    IF @attendance_id IS NULL
+    IF @AttendedDaysCount IS NULL OR @AttendedDaysCount = 0
         RETURN;
 
-    SET @missing_hours = 8 - @hours;
+    SET @TotalExpectedHours = @AttendedDaysCount * 8;
+    SET @MissingHours = @TotalExpectedHours - @TotalWorkedHours;
 
-    SELECT @salary = salary
-    FROM Employee
-    WHERE employee_ID = @employee_ID;
+    IF @MissingHours > 0
+    BEGIN
+        SELECT @HourlyRate = (dbo.calculate_salary(@employee_ID) / 22.0) / 8.0;
 
-
-    SET @rate_per_hour = (@salary / 22) / 8;
-    SET @amount = @missing_hours * @rate_per_hour;
-
-
-    INSERT INTO Deduction (emp_ID, date, amount, type, status, unpaid_ID, attendance_ID)
-    VALUES (@employee_ID, @date, @amount, 'missing_hours', 'pending', NULL, @attendance_id);
+        SET @Amount = @MissingHours * @HourlyRate;
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM Deduction 
+            WHERE emp_ID = @employee_ID 
+              AND type = 'missing_hours' 
+              AND MONTH(date) = @CurrentMonth 
+              AND YEAR(date) = @CurrentYear
+        )
+        BEGIN
+            INSERT INTO Deduction (emp_ID, date, amount, type, status, unpaid_ID, attendance_ID)
+            VALUES (
+                @employee_ID, 
+                EOMONTH(GETDATE()),
+                @Amount, 
+                'missing_hours', 
+                'pending', 
+                NULL, 
+                NULL 
+            );
+        END
+    END
 END
 GO
 
@@ -777,9 +844,7 @@ CREATE PROCEDURE Deduction_unpaid
 AS
 BEGIN
     DECLARE @daily_rate decimal(10,2); -- This is an assumption that daily rate is calculated same as rate per hour in 1.3 I couldn't find anywhere how to calculate day rate or missing day rate 
-	SELECT @daily_rate = (salary / 22.0)
-    FROM Employee 
-    WHERE employee_ID = @employee_ID;
+	SELECT @daily_rate = (dbo.calculate_salary(@employee_ID) / 22.0)
 
     INSERT INTO Deduction (emp_ID, date, amount, type, status, unpaid_ID)
     SELECT 
