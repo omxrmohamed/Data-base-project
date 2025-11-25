@@ -1,7 +1,7 @@
-﻿create database University_HR_ManagementSystem_90;
+﻿
+create database University_HR_ManagementSystem_90;
 use University_HR_ManagementSystem_90;
-drop database University_HR_ManagementSystem_90;
-
+drop database University_HR_ManagementSystem_90
 GO
 create procedure createAllTables
 as 
@@ -29,7 +29,7 @@ create table Employee(
 	emergency_contact_phone char (11), 
 	annual_balance int, 
 	accidental_balance int, 
-	salary as calculate_salary(employee_ID),
+	salary as dbo.calculate_salary(employee_ID),
 	hire_date date,
 	last_working_date date, 
 	dept_name varchar (50),
@@ -141,7 +141,7 @@ create table Document (
 	medical_ID int, 
 	unpaid_ID int,
 	check(status in ('valid', 'expired')),
-	check(type in ('contract', 'medical report', 'national ID', 'Memo')), -- not sure of this
+	check(type in ('contract', 'medical', 'national ID', 'Memo')), -- not sure of this
 	constraint PK_Doc primary key (document_ID),
 	constraint FK_Employee_Doc foreign key (emp_ID) references Employee(employee_ID),
 	constraint FK_MED_Doc foreign key (medical_ID) references Medical_Leave(request_ID),
@@ -218,6 +218,7 @@ create table Employee_Approve_Leave (
 end
 GO
 
+
 Exec createAllTables;
 
 go
@@ -281,6 +282,7 @@ Exec dropAllTables;
 
 
 GO
+
 CREATE PROCEDURE dropAllProceduresFunctionsViews
 AS
 BEGIN
@@ -581,54 +583,151 @@ GO
 
 -- 2.4.B
 GO
-create procedure  HR_approval_an_acc @request_ID int, @HR_ID int
-as
-begin 
-	declare @nd int
-	set @nd = (select num_days from leave where request_ID = @request_ID)
-	if exists(select * from Accidental_Leave al join Employee e on al.emp_ID = e.employee_ID
-				where e.accidental_balance > 0 and request_ID = @request_ID)
+CREATE PROCEDURE HR_approval_an_acc
+    @request_ID int,
+    @HR_ID int
+AS
+BEGIN
+    SET NOCOUNT ON;
 
-				begin 
-			update leave 
-				 SET final_approval_status = 
-					CASE 
-						WHEN final_approval_status = 'approved' THEN 'rejected'
-						WHEN final_approval_status = 'rejected' THEN 'approved'
-						ELSE 'approved'
-					END
-					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-					and  D.name= 'HR');
-			update Employee
-			set accidental_balance = accidental_balance - @nd
-			where employee_ID = (select emp_ID from Accidental_Leave where request_ID = @request_ID);
-			end
-	else if exists(select * from Annual_Leave al join Employee e on al.emp_ID = e.employee_ID
-				where e.annual_balance > 0 and request_ID = @request_ID)
-				begin
-				update leave 
-				 SET final_approval_status = 
-					CASE 
-						WHEN final_approval_status = 'approved' THEN 'rejected'
-						WHEN final_approval_status = 'rejected' THEN 'approved'
-						ELSE 'approved'
-					END
-					where request_ID = @request_ID and exists (select E.employee_ID from Employee E join Department D on E.dept_name = D.name where E.employee_ID =@HR_ID
-					and  D.name= 'HR');
-					update Employee
-					set annual_balance = annual_balance - @nd
-					where employee_ID = (select emp_ID from Annual_Leave where request_ID = @request_ID);
-				end
-end
+    DECLARE @emp_ID int;
+    DECLARE @days int;
+    DECLARE @type varchar(20);
+    DECLARE @start_date date, @end_date date;
+
+    IF EXISTS(SELECT 1 FROM Annual_Leave WHERE request_ID = @request_ID)
+    BEGIN
+        SET @type = 'Annual';
+        SELECT @emp_ID = emp_ID FROM Annual_Leave WHERE request_ID = @request_ID;
+    END
+    ELSE IF EXISTS(SELECT 1 FROM Accidental_Leave WHERE request_ID = @request_ID)
+    BEGIN
+        SET @type = 'Accidental';
+        SELECT @emp_ID = emp_ID FROM Accidental_Leave WHERE request_ID = @request_ID;
+    END
+    ELSE
+    BEGIN
+        RETURN; 
+    END
+
+    SELECT @start_date = start_date, @end_date = end_date 
+    FROM [Leave] 
+    WHERE request_ID = @request_ID;
+
+    SET @days = DATEDIFF(day, @start_date, @end_date) + 1;
+
+    -- 2. Check Constraints
+    DECLARE @contract varchar(50);
+    DECLARE @current_annual_balance int;
+    DECLARE @current_acc_balance int;
+
+    SELECT 
+        @contract = type_of_contract, 
+        @current_annual_balance = annual_balance,
+        @current_acc_balance = accidental_balance
+    FROM Employee 
+    WHERE employee_ID = @emp_ID;
+
+    IF EXISTS (SELECT 1 FROM Employee_Approve_Leave WHERE Leave_ID = @request_ID AND status = 'rejected')
+    BEGIN
+        UPDATE Employee_Approve_Leave SET status = 'rejected' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+        UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1 
+        FROM Employee_Approve_Leave 
+        WHERE Leave_ID = @request_ID 
+          AND Emp1_ID <> @HR_ID 
+          AND status <> 'approved' 
+    )
+    BEGIN
+        RETURN;
+    END
+
+    IF @type = 'Annual' AND @contract = 'part_time'
+    BEGIN
+        UPDATE Employee_Approve_Leave SET status = 'rejected' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+        UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+        RETURN;
+    END
+
+    IF @type = 'Annual'
+    BEGIN
+        DECLARE @replacement_ID int;
+        SELECT @replacement_ID = replacement_emp FROM Annual_Leave WHERE request_ID = @request_ID;
+
+        IF EXISTS (
+            SELECT 1 
+            FROM Employee 
+            WHERE employee_ID = @replacement_ID 
+              AND employment_status IN ('onleave', 'resigned') 
+        )
+        BEGIN
+            UPDATE Employee_Approve_Leave SET status = 'rejected' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+            UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1 
+            FROM [Leave] L
+            WHERE L.request_ID IN (
+                SELECT request_ID FROM Annual_Leave WHERE emp_ID = @replacement_ID
+                UNION ALL SELECT request_ID FROM Accidental_Leave WHERE emp_ID = @replacement_ID
+                UNION ALL SELECT request_ID FROM Medical_Leave WHERE Emp_ID = @replacement_ID
+                UNION ALL SELECT request_ID FROM Unpaid_Leave WHERE Emp_ID = @replacement_ID
+                UNION ALL SELECT request_ID FROM Compensation_Leave WHERE emp_ID = @replacement_ID
+            )
+            AND L.final_approval_status IN ('approved', 'pending')
+            AND (L.start_date <= @end_date AND L.end_date >= @start_date)
+        )
+        BEGIN
+            UPDATE Employee_Approve_Leave SET status = 'rejected' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+            UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+            RETURN;
+        END
+    END
+
+    IF @type = 'Annual'
+    BEGIN
+        IF @current_annual_balance >= @days
+        BEGIN
+            
+            UPDATE Employee_Approve_Leave SET status = 'approved' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+            UPDATE [Leave] SET final_approval_status = 'approved' WHERE request_ID = @request_ID;
+            UPDATE Employee SET annual_balance = @current_annual_balance - @days WHERE employee_ID = @emp_ID;
+        END
+        ELSE
+        BEGIN
+           
+            UPDATE Employee_Approve_Leave SET status = 'rejected' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+            UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+        END
+    END
+    ELSE IF @type = 'Accidental'
+    BEGIN
+        IF @current_acc_balance >= @days
+        BEGIN
+            UPDATE Employee_Approve_Leave SET status = 'approved' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+            UPDATE [Leave] SET final_approval_status = 'approved' WHERE request_ID = @request_ID;
+            UPDATE Employee SET accidental_balance = @current_acc_balance - @days WHERE employee_ID = @emp_ID;
+        END
+        ELSE
+        BEGIN
+            UPDATE Employee_Approve_Leave SET status = 'rejected' WHERE Leave_ID = @request_ID AND Emp1_ID = @HR_ID;
+            UPDATE [Leave] SET final_approval_status = 'rejected' WHERE request_ID = @request_ID;
+        END
+    END
+END  
 GO
-
 
 --2.4.C
 GO
 create procedure HR_approval_unpaid @request_ID int, @HR_ID int
 as
 begin
-
 
     update l 
          SET l.final_approval_status = 
@@ -642,7 +741,7 @@ begin
                                      ) THEN 'rejected'
                     when exists ( select 1 from Leave where l.final_approval_status = 'approved' 
                     and year(l.date_of_request) = year(l.start_date) and l.request_ID = @request_ID) then 'rejected'
-
+                    when e.annual_balance > 0 then 'rejected'
                     when exists (
                         select *
                         from Role r inner join Employee_role ER on r.role_name = ER.role_name
